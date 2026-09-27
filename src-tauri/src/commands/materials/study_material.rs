@@ -274,7 +274,11 @@ pub async fn update_material_name(
 }
 
 #[tauri::command]
-pub async fn open_material(id: String, app_state: State<'_, AppState>, app_handle: AppHandle) -> Result<(), String> {
+pub async fn open_material(
+    id: String,
+    app_state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
     let db_service = app_state.db.lock().await;
 
     let material = db_service
@@ -481,7 +485,7 @@ async fn process_study_material_async(
         &file_extension,
         &study_material.url,
         chromium_path.as_path(),
-        app_handle.clone()
+        app_handle.clone(),
     )
     .await
     {
@@ -498,7 +502,6 @@ async fn process_study_material_async(
     process_vector_and_finalize(state, study_material, material_id, app_handle).await;
 }
 
-
 async fn process_vector_and_finalize(
     state: &AppState,
     study_material: study_material::StudyMaterial,
@@ -509,7 +512,7 @@ async fn process_vector_and_finalize(
     if let Err(e) = process_vector_indexing(state, study_material).await {
         eprintln!("Vector indexing failed: {}", e);
     }
-    
+
     let db_service = state.db.lock().await;
     match db_service.update_study_material_processing_state(&material_id, false) {
         Ok(_) => {

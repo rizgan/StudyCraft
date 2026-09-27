@@ -99,7 +99,8 @@ CREATE TRIGGER IF NOT EXISTS t_chunks_after_update AFTER UPDATE ON chunks BEGIN
   INSERT INTO chunks_fts(rowid, id, chunk_text) VALUES (new.rowid, new.id, new.chunk_text);
 END";
 
-pub const FTS_SEARCH: &str = "SELECT id, rank FROM chunks_fts WHERE chunk_text MATCH ? ORDER BY rank LIMIT ?;";
+pub const FTS_SEARCH: &str =
+    "SELECT id, rank FROM chunks_fts WHERE chunk_text MATCH ? ORDER BY rank LIMIT ?;";
 
 pub const GET_CHUNKS_BY_IDS: &str = "
 SELECT id, material_id, file_display_name, chunk_index, chunk_text

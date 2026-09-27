@@ -1,10 +1,10 @@
 use crate::config::keystore::ApiKeystore;
 use crate::config::utils::internal_str_to_provider_type;
 use crate::config::APP_PATHS;
+use crate::constants;
 use crate::constants::{ALL_PROVIDER_TYPES, API_SETTINGS_FILE_NAME};
 use crate::errors::{AppError, AppResult};
 use flyllm::{ModelDiscovery, ProviderType};
-use crate::constants;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -284,11 +284,12 @@ impl LlmUserConfig {
 
         let models = if provider_type == ProviderType::Ollama {
             // Determine the endpoint to use
-            let endpoint_to_use = config.endpoint_url
+            let endpoint_to_use = config
+                .endpoint_url
                 .clone()
                 .or_else(|| self.get_ollama_endpoint().ok().flatten())
                 .unwrap_or_else(|| constants::OLLAMA_CUSTOM_ENDPOINT.to_string());
-        
+
             ModelDiscovery::list_ollama_models(Some(&endpoint_to_use))
                 .await
                 .map_err(|e| AppError::ApiError(format!("Failed to fetch Ollama models: {}", e)))?
@@ -394,11 +395,11 @@ impl LlmUserConfig {
 
     pub fn set_ollama_endpoint(&mut self, endpoint_url: Option<String>) -> AppResult<()> {
         let provider_type = ProviderType::Ollama;
-        
+
         if let Some(config) = self.provider_configs.get_mut(&provider_type) {
             config.endpoint_url = endpoint_url.clone();
         }
-        
+
         self.save()
     }
 

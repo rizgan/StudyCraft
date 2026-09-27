@@ -1,6 +1,10 @@
 use crate::commands::structure::requests;
 use crate::commands::structure::responses;
+use crate::config::api_config::LlmUserConfig;
+use crate::config::utils::internal_str_to_provider_type;
 use crate::constants;
+use crate::materials::anki_apkg::export_apkg;
+use crate::services::llm_service::vision::{self, ImageAnalysis};
 use crate::materials::flashcard::export_to_anki;
 use crate::materials::flashcard::{Flashcard, FlashcardCounts, NewFlashcard};
 use crate::materials::review_material;
@@ -16,6 +20,7 @@ use crate::services::db_service::{
 };
 use crate::state::AppState;
 use tauri::State;
+use tauri_plugin_dialog::DialogExt;
 
 #[tauri::command]
 pub async fn get_review_materials(
@@ -418,13 +423,91 @@ pub async fn get_material_tags(
 #[tauri::command]
 pub async fn export_flashcard_deck_to_anki(
     deck_id: String,
+    export_format: Option<String>,
+    app: tauri::AppHandle,
     app_state: State<'_, AppState>,
 ) -> Result<String, String> {
     let db_service = app_state.db.lock().await;
+
+    // Verify deck exists
+    let deck = db_service
+        .get_flashcard_deck(&deck_id)
+        .map_err(|e| format!("Failed to get flashcard deck: {}", e))?
+        .ok_or("Flashcard deck not found")?;
 
     let flashcards = db_service
         .get_flashcards(&deck_id)
         .map_err(|e| format!("Failed to get flashcards: {}", e))?;
 
-    Ok(export_to_anki(flashcards))
+    if flashcards.is_empty() {
+        return Err("Deck has no cards to export".to_string());
     }
+
+    let tags = db_service
+        .get_material_tags(&deck_id)
+        .map_err(|e| format!("Failed to get material tags: {}", e))?;
+
+    let format = export_format.unwrap_or_else(|| "tsv".to_string());
+
+    // .apkg is a binary format — write it to a user-chosen file via the save dialog.
+    if format.eq_ignore_ascii_case("apkg") {
+        drop(db_service);
+        let safe_name: String = deck
+            .display_name
+            .chars()
+            .filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_'))
+            .collect();
+        let default_name = format!("{}.apkg", if safe_name.is_empty() { "StudyCraft Deck" } else { &safe_name });
+
+        let save_result = app
+            .dialog()
+            .file()
+            .add_filter("Anki Package", &["apkg"])
+            .set_title("Export Anki Package (.apkg)")
+            .set_file_name(default_name)
+            .blocking_save_file();
+
+        let path = match save_result {
+            Some(path) => path,
+            None => return Err("Export cancelled".to_string()),
+        };
+
+        let path_buf = path.into_path().map_err(|e| format!("Invalid save path: {}", e))?;
+
+        export_apkg(&flashcards, &deck.display_name, &path_buf)
+            .map_err(|e| format!("Failed to write .apkg file: {}", e))?;
+
+        return Ok(path_buf.to_string_lossy().to_string());
+    }
+
+    if !format.eq_ignore_ascii_case("tsv") && !format.eq_ignore_ascii_case("csv") {
+        return Err("Unsupported export format. Use 'tsv', 'csv' or 'apkg'.".to_string());
+    }
+
+    Ok(export_to_anki(flashcards, Some(tags), &format))
+}
+
+/// Analyze an image using a vision-capable LLM and return a structured
+/// [`ImageAnalysis`]. Used to understand diagrams / screenshots and feed the
+/// extracted content into the RAG / flashcard-generation pipeline.
+#[tauri::command]
+pub async fn analyze_image_with_vision(
+    image_path: String,
+    prompt: Option<String>,
+    model: Option<String>,
+    provider: Option<String>,
+) -> Result<ImageAnalysis, String> {
+    let config = LlmUserConfig::load().map_err(|e| e.to_string())?;
+
+    let provider_override = match provider.as_deref() {
+        Some(p) => match internal_str_to_provider_type(p) {
+            Ok(pt) => Some(pt),
+            Err(e) => return Err(format!("Unknown provider '{}': {}", p, e)),
+        },
+        None => None,
+    };
+
+    vision::analyze_image(&config, &image_path, prompt, model, provider_override.as_ref())
+        .await
+        .map_err(|e| e.to_string())
+}

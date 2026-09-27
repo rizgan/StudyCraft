@@ -21,7 +21,7 @@ pub enum AppError {
     UrlError(String),
     GitError(String),
     MarkdownRendererError(String),
-    ChromiumError(String)
+    ChromiumError(String),
 }
 
 /// Displays for AppError
@@ -44,7 +44,7 @@ impl fmt::Display for AppError {
             AppError::UrlError(msg) => write!(f, "URL Error: {}", msg),
             AppError::GitError(msg) => write!(f, "Git Error: {}", msg),
             AppError::MarkdownRendererError(msg) => write!(f, "Markdown Renderer Error: {}", msg),
-            AppError::ChromiumError(msg) => write!(f, "Chromium error: {}", msg)
+            AppError::ChromiumError(msg) => write!(f, "Chromium error: {}", msg),
         }
     }
 }

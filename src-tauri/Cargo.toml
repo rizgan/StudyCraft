@@ -39,7 +39,7 @@ chrono = { version = "0.4.31", features = ["serde"] }
 flyllm = "0.3.1"
 fastembed = "=4.9.1"
 ort = { version = "2.0.0-rc.9", features = ["download-binaries"] }
-zip = "4.2.0"
+zip = { version = "5.1.1", default-features = false, features = ["deflate", "zstd"] }
 rand = "0.9.1"
 keyring = "2.0"
 sqlite-vec = "0.1.6"
@@ -57,3 +57,4 @@ regex = "1.11.2"
 tauri-plugin-shell = "2"
 chromiumoxide = { version = "0.7", features = ["tokio-runtime", "_fetcher-rusttls-tokio"], default-features = false }
 base64 = "0.22.1"
+csv = "1"

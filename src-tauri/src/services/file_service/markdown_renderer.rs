@@ -1,52 +1,54 @@
 use crate::constants;
 use crate::errors::{AppError, AppResult};
+use base64;
 use chromiumoxide::browser::{Browser, BrowserConfig};
 use chromiumoxide::cdp::browser_protocol::emulation::SetDeviceMetricsOverrideParams;
-use chromiumoxide::cdp::browser_protocol::page::{CaptureScreenshotParams, CaptureScreenshotFormat};
 use chromiumoxide::cdp::browser_protocol::page::Viewport;
+use chromiumoxide::cdp::browser_protocol::page::{
+    CaptureScreenshotFormat, CaptureScreenshotParams,
+};
 use futures::StreamExt;
-use base64;
 use pulldown_cmark::{html, Options, Parser};
 use std::{fs, path::Path, path::PathBuf};
 
 pub struct MarkdownRenderer {
     temp_dir: PathBuf,
     browser: Browser,
-    _handler_task: tokio::task::JoinHandle<()>
+    _handler_task: tokio::task::JoinHandle<()>,
 }
 
 impl MarkdownRenderer {
     pub async fn new(chromium_path: &Path) -> AppResult<Self> {
-        let temp_dir = std::env::temp_dir()
-            .join(format!("markdown_renderer_{}", std::process::id()));
-        
+        let temp_dir =
+            std::env::temp_dir().join(format!("markdown_renderer_{}", std::process::id()));
+
         fs::create_dir_all(&temp_dir).map_err(|e| AppError::IoError(e))?;
 
         // Download Chromium if not already present
         let (browser, handler_task) = Self::setup_browser(chromium_path).await?;
 
-        Ok(Self { 
-            temp_dir, 
+        Ok(Self {
+            temp_dir,
             browser,
             _handler_task: handler_task,
         })
     }
 
-    async fn setup_browser(chromium_path: &Path) -> AppResult<(Browser, tokio::task::JoinHandle<()>)> {
+    async fn setup_browser(
+        chromium_path: &Path,
+    ) -> AppResult<(Browser, tokio::task::JoinHandle<()>)> {
         let (browser, mut handler) = Browser::launch(
             BrowserConfig::builder()
                 .chrome_executable(chromium_path.to_path_buf())
                 .window_size(
                     constants::COVER_IMAGE_DIMENSIONS.0,
-                    constants::COVER_IMAGE_DIMENSIONS.1
+                    constants::COVER_IMAGE_DIMENSIONS.1,
                 )
                 .build()
-                .map_err(|e| AppError::MarkdownRendererError(e.to_string()))?
+                .map_err(|e| AppError::MarkdownRendererError(e.to_string()))?,
         )
         .await
-        .map_err(|e| AppError::MarkdownRendererError(
-            format!("Failed to launch browser: {}", e)
-        ))?;
+        .map_err(|e| AppError::MarkdownRendererError(format!("Failed to launch browser: {}", e)))?;
 
         let handler_task = tokio::spawn(async move {
             while let Some(event) = handler.next().await {
@@ -65,22 +67,24 @@ impl MarkdownRenderer {
     fn get_chromium_cache_dir() -> AppResult<PathBuf> {
         let cache_dir = if cfg!(target_os = "macos") {
             dirs::cache_dir()
-                .ok_or_else(|| AppError::MarkdownRendererError(
-                    "Could not find cache directory".to_string()
-                ))?
+                .ok_or_else(|| {
+                    AppError::MarkdownRendererError("Could not find cache directory".to_string())
+                })?
                 .join("com.yourapp.studycraft")
         } else if cfg!(target_os = "linux") {
             dirs::cache_dir()
-                .ok_or_else(|| AppError::MarkdownRendererError(
-                    "Could not find cache directory".to_string()
-                ))?
+                .ok_or_else(|| {
+                    AppError::MarkdownRendererError("Could not find cache directory".to_string())
+                })?
                 .join("studycraft")
         } else {
             // Windows
             dirs::data_local_dir()
-                .ok_or_else(|| AppError::MarkdownRendererError(
-                    "Could not find local data directory".to_string()
-                ))?
+                .ok_or_else(|| {
+                    AppError::MarkdownRendererError(
+                        "Could not find local data directory".to_string(),
+                    )
+                })?
                 .join("studycraft")
         };
 
@@ -102,14 +106,15 @@ impl MarkdownRenderer {
         height: u32,
     ) -> AppResult<()> {
         let html_content = self.markdown_to_html(markdown_content)?;
-        
-        let html_file_path = self.temp_dir
-            .join(format!("rendered_{}.html", std::process::id()));
-        
-        fs::write(&html_file_path, html_content)
-            .map_err(|e| AppError::IoError(e))?;
 
-        let page = self.browser
+        let html_file_path = self
+            .temp_dir
+            .join(format!("rendered_{}.html", std::process::id()));
+
+        fs::write(&html_file_path, html_content).map_err(|e| AppError::IoError(e))?;
+
+        let page = self
+            .browser
             .new_page(&format!("file://{}", html_file_path.to_string_lossy()))
             .await
             .map_err(|e| AppError::MarkdownRendererError(e.to_string()))?;
@@ -138,18 +143,17 @@ impl MarkdownRenderer {
                     .clip(Viewport {
                         x: 0.0,
                         y: 0.0,
-                        width: width as f64,  // Changed from width * 0.93
-                        height: height as f64,  // Changed from height * 0.93
+                        width: width as f64,   // Changed from width * 0.93
+                        height: height as f64, // Changed from height * 0.93
                         scale: 1.0,
                     })
-                    .build()
+                    .build(),
             )
             .await
             .map_err(|e| AppError::MarkdownRendererError(e.to_string()))?;
 
         if !output_path.exists() {
-            fs::write(output_path, screenshot)
-                .map_err(|e| AppError::IoError(e))?;
+            fs::write(output_path, screenshot).map_err(|e| AppError::IoError(e))?;
         }
 
         Ok(())
@@ -334,17 +338,10 @@ impl MarkdownRenderer {
         "#
     }
 
-    async fn screenshot_url(
-        &self,
-        url: &str,
-        width: u32,
-        height: u32,
-    ) -> AppResult<Vec<u8>> {
-        let page = self
-            .browser
-            .new_page(url)
-            .await
-            .map_err(|e| AppError::MarkdownRendererError(format!("Failed to create page: {}", e)))?;
+    async fn screenshot_url(&self, url: &str, width: u32, height: u32) -> AppResult<Vec<u8>> {
+        let page = self.browser.new_page(url).await.map_err(|e| {
+            AppError::MarkdownRendererError(format!("Failed to create page: {}", e))
+        })?;
 
         // Set device metrics to control viewport size
         let metrics = SetDeviceMetricsOverrideParams::builder()
@@ -360,9 +357,9 @@ impl MarkdownRenderer {
             .map_err(|e| AppError::MarkdownRendererError(e.to_string()))?;
 
         // Wait for page to load and render
-        page.wait_for_navigation()
-            .await
-            .map_err(|e| AppError::MarkdownRendererError(format!("Failed to wait for navigation: {}", e)))?;
+        page.wait_for_navigation().await.map_err(|e| {
+            AppError::MarkdownRendererError(format!("Failed to wait for navigation: {}", e))
+        })?;
 
         tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
 
@@ -381,18 +378,17 @@ impl MarkdownRenderer {
             .clip(clip_viewport)
             .build();
 
-        let screenshot_result = page
-            .execute(screenshot_params)
-            .await
-            .map_err(|e| {
-                AppError::MarkdownRendererError(format!("Failed to capture screenshot: {}", e))
-            })?;
+        let screenshot_result = page.execute(screenshot_params).await.map_err(|e| {
+            AppError::MarkdownRendererError(format!("Failed to capture screenshot: {}", e))
+        })?;
 
-        let screenshot_data = base64::decode(&screenshot_result.data)
-            .map_err(|e| AppError::MarkdownRendererError(format!("Failed to decode screenshot: {}", e)))?;
+        let screenshot_data = base64::decode(&screenshot_result.data).map_err(|e| {
+            AppError::MarkdownRendererError(format!("Failed to decode screenshot: {}", e))
+        })?;
 
         Ok(screenshot_data)
-    }}
+    }
+}
 
 impl Drop for MarkdownRenderer {
     fn drop(&mut self) {
@@ -400,7 +396,11 @@ impl Drop for MarkdownRenderer {
     }
 }
 
-pub async fn url_to_screenshot(url: &str, output_path: &Path, chromium_path: &Path) -> AppResult<()> {
+pub async fn url_to_screenshot(
+    url: &str,
+    output_path: &Path,
+    chromium_path: &Path,
+) -> AppResult<()> {
     let renderer = MarkdownRenderer::new(chromium_path).await?;
     let (width, height) = constants::COVER_IMAGE_DIMENSIONS;
     let result = renderer
@@ -413,7 +413,7 @@ pub async fn url_to_screenshot(url: &str, output_path: &Path, chromium_path: &Pa
 pub async fn markdown_file_to_screenshot(
     markdown_file_path: &Path,
     output_path: &Path,
-    chromium_path: &Path
+    chromium_path: &Path,
 ) -> AppResult<()> {
     let markdown_content =
         fs::read_to_string(markdown_file_path).map_err(|e| AppError::IoError(e))?;

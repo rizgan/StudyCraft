@@ -8,6 +8,8 @@
   // Components
   import Button from "../Shared/Button.svelte";
   import FlashcardModal from "./FlashcardModal.svelte";
+  import { invoke } from "@tauri-apps/api/core";
+  import { Image as ImageIcon } from "lucide-svelte";
 
   // Logic & Types
   import {
@@ -49,6 +51,13 @@
 
   // State
   let isModalOpen = false;
+  let isAnalyzingImage = false;
+  let imageAnalysis = null as null | {
+    description: string;
+    key_terms: string[];
+    extracted_facts: string[];
+    is_diagram: boolean;
+  };
   let updateInterval: number | null = null;
   let currentStep = logic.getCurrentStep;
   let cards = logic.getCards;
@@ -167,6 +176,49 @@
   function handlePreviousStep() {
     logic.moveToPreviousStep();
     currentStep = logic.getCurrentStep;
+  }
+
+  async function handleAnalyzeImage() {
+    if (isAnalyzingImage) return;
+    try {
+      isAnalyzingImage = true;
+      imageAnalysis = null;
+
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        multiple: false,
+        filters: [
+          {
+            name: "Images",
+            extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"],
+          },
+        ],
+      });
+
+      if (!selected || Array.isArray(selected)) {
+        return; // user cancelled or no file
+      }
+
+      const analysis = await invoke<{
+        description: string;
+        key_terms: string[];
+        extracted_facts: string[];
+        is_diagram: boolean;
+      }>("analyze_image_with_vision", { imagePath: selected });
+
+      imageAnalysis = analysis;
+      toastStore.success(
+        "Image analyzed. Review the extracted content below and add it to the concept field to guide generation.",
+      );
+    } catch (e) {
+      console.error("Image analysis failed:", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      toastStore.error(
+        `Failed to analyze image. ${msg ? msg : "Check that a vision-capable provider is configured."}`,
+      );
+    } finally {
+      isAnalyzingImage = false;
+    }
   }
 
   // Card management functions
@@ -440,7 +492,52 @@
               icon={BotIcon}
               disabled={isGenerating || !canUseAI}
             ></Button>
+
+            <Button
+              variant="secondary"
+              text={isAnalyzingImage ? "Analyzing image..." : "Understand Image (Diagram / Screenshot)"}
+              onClick={handleAnalyzeImage}
+              icon={ImageIcon}
+              disabled={isGenerating || isAnalyzingImage || !canUseAI}
+            ></Button>
           </div>
+
+          {#if imageAnalysis}
+            <div class="fdc-image-analysis" transition:fade>
+              <div class="fdc-ia-header">
+                <h4>Image Analysis{#if imageAnalysis.is_diagram} (diagram){/if}</h4>
+                <button
+                  class="fdc-ia-close"
+                  title="Clear analysis"
+                  on:click={() => (imageAnalysis = null)}
+                >×</button>
+              </div>
+              <div class="fdc-ia-section">
+                <label>Description</label>
+                <p class="fdc-ia-text">{imageAnalysis.description}</p>
+              </div>
+              {#if imageAnalysis.key_terms.length > 0}
+                <div class="fdc-ia-section">
+                  <label>Key terms</label>
+                  <div class="fdc-ia-tags">
+                    {#each imageAnalysis.key_terms as term}
+                      <span class="fdc-ia-tag">{term}</span>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+              {#if imageAnalysis.extracted_facts.length > 0}
+                <div class="fdc-ia-section">
+                  <label>Extracted facts</label>
+                  <ul class="fdc-ia-facts">
+                    {#each imageAnalysis.extracted_facts as fact}
+                      <li>{fact}</li>
+                    {/each}
+                  </ul>
+                </div>
+              {/if}
+            </div>
+          {/if}
 
           {#if formData.selectedMaterials.length > 0}
             <div class="fdc-selected-materials-compact">

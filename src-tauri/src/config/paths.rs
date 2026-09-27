@@ -14,7 +14,7 @@ pub struct AppPaths {
     pub covers_dir: PathBuf,
     /// Directory for storing a Chromium binary for rendering webpages and mds
     /// We do not create this one because we wanna later check if it is initialized or not
-    pub chromium_dir: PathBuf
+    pub chromium_dir: PathBuf,
 }
 
 impl Default for AppPaths {
@@ -55,7 +55,7 @@ impl Default for AppPaths {
             config_dir,
             materials_dir,
             covers_dir,
-            chromium_dir
+            chromium_dir,
         }
     }
 }

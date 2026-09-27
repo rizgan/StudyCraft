@@ -51,14 +51,14 @@ pub async fn save_agent_settings(
     let mut agent_settings = state.agent_settings.lock().await;
     *agent_settings = settings;
     agent_settings.save().map_err(|e| e.to_string())?;
-    
+
     drop(agent_settings);
-    
+
     state
         .rebuild_llm_service()
         .await
         .map_err(|e| e.to_string())?;
-    
+
     Ok(())
 }
 

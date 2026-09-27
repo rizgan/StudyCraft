@@ -31,6 +31,7 @@
     `scale(${1 - (1 - $size) * 0.1})`;
   
   let showDeleteConfirm = false;
+  let showExportMenu = false;
   let isEditing = false;
   let editingName = '';
   let nameElement;
@@ -123,40 +124,58 @@
     }
   }
   
-  async function handleExportToAnki(event) {
-    event.stopPropagation();
-    
-    if (isExporting) return;
-    
-    try {
-      isExporting = true;
-      
-      const ankiContent = await invoke<string>('export_flashcard_deck_to_anki', {
-        deckId: String(materialId)
-      });
-      
-      const defaultFileName = `${materialName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.txt`;
-      
-      const filePath = await save({
-        defaultPath: defaultFileName,
-        filters: [{
-          name: 'Anki Text File',
-          extensions: ['txt']
-        }]
-      });
-      
-      if (filePath) {
-        await writeTextFile(filePath, ankiContent);
-        console.log('Anki export saved to:', filePath);
-        toastStore.success('Deck exported to Anki format successfully');
+  async function handleExportToAnki(event, format) {
+      event.stopPropagation();
+
+      if (isExporting) return;
+
+      try {
+        isExporting = true;
+
+        const result = await invoke<string>('export_flashcard_deck_to_anki', {
+          deckId: String(materialId),
+          exportFormat: format
+        });
+
+        if (format === 'apkg') {
+          // The backend already showed the save dialog and wrote the file.
+          console.log('Anki .apkg package saved to:', result);
+          toastStore.success('Anki package (.apkg) exported successfully');
+          isExporting = false;
+          return;
+        }
+
+        const ankiContent = result;
+        const sanitized = materialName.replace(/[\\/:*?"<>|]/g, '_').trim();
+        const defaultFileName = `${sanitized}-anki.${format}`;
+
+        const filePath = await save({
+          defaultPath: defaultFileName,
+          filters: [{
+            name: format === 'csv' ? 'Anki CSV File' : 'Anki TSV File',
+            extensions: [format]
+          }]
+        });
+
+        if (filePath) {
+          await writeTextFile(filePath, ankiContent);
+          console.log('Anki export saved to:', filePath);
+          toastStore.success('Deck exported to Anki format successfully');
+        }
+        // If filePath is null, user cancelled the dialog — not an error
+      } catch (error) {
+        console.error('Failed to export to Anki:', error);
+        const message = error instanceof Error ? error.message : String(error);
+        if (message === 'Export cancelled') {
+          // User cancelled the save dialog — not an error.
+          isExporting = false;
+          return;
+        }
+        toastStore.error('Failed to export deck to Anki format. Please try again.');
+      } finally {
+        isExporting = false;
       }
-    } catch (error) {
-      console.error('Failed to export to Anki:', error);
-      toastStore.error('Failed to export deck to Anki format. Please try again.');
-    } finally {
-      isExporting = false;
     }
-  }
   
   function startEditing(event) {
     event.stopPropagation();
@@ -392,12 +411,16 @@
       </svg>
     </button>
         {#if isFlashcardDeck}
+      <div class="rmc-export-menu" on:click={(e) => e.stopPropagation()} on:keydown={(e) => e.stopPropagation()} role="menu" aria-label="Export to Anki">
       <button 
         class="rmc-action-button rmc-export"
         title="Export to Anki"
         aria-label="Export to Anki"
         disabled={isExporting}
-        on:click={handleExportToAnki}
+        on:click={(e) => {
+          e.stopPropagation();
+          showExportMenu = !showExportMenu;
+        }}
       >
         <svg 
           xmlns="http://www.w3.org/2000/svg" 
@@ -415,6 +438,38 @@
           <line x1="12" y1="15" x2="12" y2="3"></line>
         </svg>
       </button>
+      {#if showExportMenu}
+        <div class="rmc-export-menu-options">
+          <button
+            class="rmc-export-option"
+            role="menuitem"
+            on:click={(e) => {
+              e.stopPropagation();
+              showExportMenu = false;
+              handleExportToAnki(e, 'tsv');
+            }}
+          >TSV</button>
+          <button
+            class="rmc-export-option"
+            role="menuitem"
+            on:click={(e) => {
+              e.stopPropagation();
+              showExportMenu = false;
+              handleExportToAnki(e, 'csv');
+            }}
+          >CSV</button>
+          <button
+            class="rmc-export-option"
+            role="menuitem"
+            on:click={(e) => {
+              e.stopPropagation();
+              showExportMenu = false;
+              handleExportToAnki(e, 'apkg');
+            }}
+          >.apkg (Anki package)</button>
+        </div>
+      {/if}
+      </div>
     {/if}
   </div>
 
@@ -582,15 +637,10 @@
  display: flex;
  flex-direction: column;
  gap: var(--space-xs);
- opacity: 0;
- transform: translateX(10px);
- transition: all 0.3s ease;
- z-index: 10;
-}
-
-.rmc-material-card:hover .rmc-action-buttons {
  opacity: 1;
  transform: translateX(0);
+ transition: all 0.3s ease;
+ z-index: 10;
 }
 
 .rmc-action-button {
@@ -625,6 +675,48 @@
 .rmc-action-button.rmc-export:hover {
  background: color-mix(in srgb, var(--accent) 15%, var(--surface));
  color: var(--accent);
+}
+
+.rmc-export-menu {
+ position: relative;
+ display: flex;
+ flex-direction: column;
+ gap: var(--space-xs);
+}
+
+.rmc-export-menu-options {
+ display: flex;
+ flex-direction: column;
+ gap: 2px;
+ background: var(--surface);
+ border: 1px solid var(--border);
+ border-radius: var(--border-radius);
+ padding: 4px;
+ box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.rmc-export-option {
+ border: none;
+ background: transparent;
+ color: var(--text);
+ font-size: 0.75rem;
+ font-weight: 500;
+ font-family: inherit;
+ cursor: pointer;
+ padding: 4px 8px;
+ border-radius: 6px;
+ text-align: center;
+ transition: background 0.15s ease;
+}
+
+.rmc-export-option:hover {
+ background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+ color: var(--accent);
+}
+
+.rmc-export-option:focus {
+ outline: 2px solid var(--accent);
+ outline-offset: 1px;
 }
 
 .rmc-action-button.rmc-delete:hover {

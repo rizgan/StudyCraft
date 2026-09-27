@@ -1,8 +1,8 @@
+use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::ffi::sqlite3_auto_extension;
 use rusqlite::params;
-use pulldown_cmark::{Parser, Event, Tag, TagEnd};
 use serde::{Deserialize, Serialize};
 use sqlite_vec::sqlite3_vec_init;
 use std::sync::Arc;
@@ -622,10 +622,13 @@ impl VectorService {
         for event in parser {
             match event {
                 // A heading marks a new semantic section.
-                Event::Start(Tag::Heading { .. } ) | Event::Start(Tag::CodeBlock(_)) => {
+                Event::Start(Tag::Heading { .. }) | Event::Start(Tag::CodeBlock(_)) => {
                     // Process the previously accumulated chunk before starting a new one.
                     if !current_semantic_chunk.trim().is_empty() {
-                        process_and_add_chunk(&mut final_chunks, std::mem::take(&mut current_semantic_chunk));
+                        process_and_add_chunk(
+                            &mut final_chunks,
+                            std::mem::take(&mut current_semantic_chunk),
+                        );
                     }
                 }
                 Event::Text(t) => {
@@ -642,7 +645,7 @@ impl VectorService {
         if !current_semantic_chunk.trim().is_empty() {
             process_and_add_chunk(&mut final_chunks, current_semantic_chunk);
         }
-        
+
         Ok(final_chunks)
     }
 
@@ -723,17 +726,17 @@ fn process_and_add_chunk(final_chunks: &mut Vec<String>, chunk_text: String) {
 fn split_large_chunk(text: &str, max_size: usize, overlap: usize) -> Vec<String> {
     let mut chunks = Vec::new();
     let chars: Vec<char> = text.chars().collect();
-    
+
     let mut start_char = 0;
     while start_char < chars.len() {
         let end_char = std::cmp::min(start_char + max_size, chars.len());
         let chunk: String = chars[start_char..end_char].iter().collect();
         chunks.push(chunk);
-        
+
         if end_char >= chars.len() {
             break;
         }
-        
+
         // Move forward, but overlap by the specified amount
         start_char = if end_char > overlap {
             end_char - overlap
@@ -741,7 +744,7 @@ fn split_large_chunk(text: &str, max_size: usize, overlap: usize) -> Vec<String>
             end_char
         };
     }
-    
+
     chunks
 }
 
@@ -749,26 +752,26 @@ fn split_at_smart_boundaries(text: &str, max_size: usize) -> Vec<String> {
     let mut chunks = Vec::new();
     let chars: Vec<char> = text.chars().collect();
     let mut current_start = 0;
-    
+
     while current_start < chars.len() {
         let end_char = std::cmp::min(current_start + max_size, chars.len());
-        
+
         if end_char >= chars.len() {
             // Last chunk - take everything remaining
             let remaining: String = chars[current_start..].iter().collect();
             chunks.push(remaining);
             break;
         }
-        
+
         // Get the chunk text up to max_size characters
         let chunk_text: String = chars[current_start..end_char].iter().collect();
-        
+
         // Find the best split point within this chunk
         if let Some(split_pos) = find_best_split_point(&chunk_text) {
             // split_pos is in bytes within chunk_text, which is safe
             let actual_chunk = &chunk_text[..split_pos];
             chunks.push(actual_chunk.to_string());
-            
+
             // Convert back to character position
             let chars_taken = actual_chunk.chars().count();
             current_start += chars_taken;
@@ -778,22 +781,22 @@ fn split_at_smart_boundaries(text: &str, max_size: usize) -> Vec<String> {
             current_start = end_char;
         }
     }
-    
+
     chunks
 }
 
 fn find_best_split_point(text: &str) -> Option<usize> {
     // Priority order for split points (from best to worst)
     let boundaries = [
-        "\n\n",    // Paragraph breaks (best)
-        "\n",      // Line breaks
-        ". ",      // Sentence ends (only with space after)
-        "? ",      // Question ends
-        "! ",      // Exclamation ends
-        ", ",      // Comma breaks
-        " ",       // Word boundaries (last resort)
+        "\n\n", // Paragraph breaks (best)
+        "\n",   // Line breaks
+        ". ",   // Sentence ends (only with space after)
+        "? ",   // Question ends
+        "! ",   // Exclamation ends
+        ", ",   // Comma breaks
+        " ",    // Word boundaries (last resort)
     ];
-    
+
     for boundary in &boundaries {
         if let Some(pos) = text.rfind(boundary) {
             // Make sure we're not too close to the beginning (at least 25% through)
@@ -802,7 +805,7 @@ fn find_best_split_point(text: &str) -> Option<usize> {
             }
         }
     }
-    
+
     None
 }
 
@@ -818,11 +821,11 @@ fn add_or_merge_chunk(final_chunks: &mut Vec<String>, chunk_text: String) {
         let new_chunk_len = trimmed_chunk.chars().count();
 
         // Condition: Is the last chunk too small AND will the combined chunk be under the max limit?
-        if last_chunk_len < constants::VECDB_MIN_CHUNK_SIZE &&
-           (last_chunk_len + new_chunk_len) <= constants::VECDB_MAX_CHUNK_SIZE {
-            
+        if last_chunk_len < constants::VECDB_MIN_CHUNK_SIZE
+            && (last_chunk_len + new_chunk_len) <= constants::VECDB_MAX_CHUNK_SIZE
+        {
             // Merge the new chunk into the previous one
-            last_chunk.push_str("\n\n"); 
+            last_chunk.push_str("\n\n");
             last_chunk.push_str(trimmed_chunk);
             return;
         }

@@ -276,7 +276,9 @@ pub async fn set_ollama_endpoint(
     endpoint_url: String,
 ) -> Result<(), String> {
     let mut config = LlmUserConfig::load().map_err(|e| e.to_string())?;
-    config.set_ollama_endpoint(Some(endpoint_url)).map_err(|e| e.to_string())?;
+    config
+        .set_ollama_endpoint(Some(endpoint_url))
+        .map_err(|e| e.to_string())?;
     state
         .rebuild_llm_service()
         .await

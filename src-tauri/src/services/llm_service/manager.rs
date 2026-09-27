@@ -1345,17 +1345,17 @@ async fn build_llm_manager_from_config(
 
 fn clean_json_content(content: &str) -> String {
     let trimmed = content.trim();
-    let without_prefix = trimmed.strip_prefix("```json")
-                                .or_else(|| trimmed.strip_prefix("```"))
-                                .unwrap_or(trimmed);
-   
-    let without_suffix = without_prefix.strip_suffix("```")
-                                       .unwrap_or(without_prefix);
-    
+    let without_prefix = trimmed
+        .strip_prefix("```json")
+        .or_else(|| trimmed.strip_prefix("```"))
+        .unwrap_or(trimmed);
+
+    let without_suffix = without_prefix.strip_suffix("```").unwrap_or(without_prefix);
+
     let cleaned = without_suffix
-           .replace("**", "")  // Remove bold markers
-           .replace("*****", "")  // Remove emphasis markers
-           .replace("*", "");  // Remove remaining asterisks
+        .replace("**", "") // Remove bold markers
+        .replace("*****", "") // Remove emphasis markers
+        .replace("*", ""); // Remove remaining asterisks
 
     sanitize_json_strings(cleaned.trim())
 }

@@ -70,6 +70,7 @@ async fn main() {
             commands::materials::review_material::update_flashcard_deck,
             commands::materials::review_material::get_flashcard_deck_details,
             commands::materials::review_material::export_flashcard_deck_to_anki,
+            commands::materials::review_material::analyze_image_with_vision,
             // Test Commands
             commands::materials::review_material::create_test,
             commands::materials::review_material::get_test_details,

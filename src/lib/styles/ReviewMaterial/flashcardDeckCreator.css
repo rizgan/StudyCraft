@@ -281,6 +281,85 @@ label {
 .fdc-select-materials-wrapper {
   display: flex;
   justify-content: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.fdc-image-analysis {
+  margin-top: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius);
+  background: var(--background);
+  padding: var(--space-md);
+}
+
+.fdc-ia-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-sm);
+}
+
+.fdc-ia-header h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.fdc-ia-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.25rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 var(--space-xs);
+}
+
+.fdc-ia-close:hover {
+  color: var(--text);
+}
+
+.fdc-ia-section {
+  margin-bottom: var(--space-sm);
+}
+
+.fdc-ia-section label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.fdc-ia-text {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.fdc-ia-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.fdc-ia-tag {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--border-radius-full, 999px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.fdc-ia-facts {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .fdc-selected-materials-compact {

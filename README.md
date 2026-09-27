@@ -86,6 +86,12 @@ Requirements:
 3. **Set up Python environment**
     ```python
     pip install pyinstaller pymupdf4llm pillow
+
+    # Optional: OCR support for scanned PDFs (English / Russian / Arabic).
+    # Either Tesseract (needs the tesseract-ocr binary + eng/rus/ara packs)
+    #   pip install pytesseract
+    # or RapidOCR (pure-Python, no external binary required)
+    #   pip install rapidocr_onnxruntime
     ```
 
 4. **Embed Python binaries**
@@ -153,6 +159,25 @@ You need to build the Python executables that will be bundled with the app.
    ```bash
    npm run tauri build
    ```
+
+## Feature Notes
+
+### Exporting Flashcards to Anki
+The flashcard export menu (on each deck card) supports three formats:
+- **TSV** and **CSV** — comma/tab-separated files, opened with the native save dialog.
+- **.apkg** — a native Anki package (SQLite collection + metadata, zipped) that can be imported directly via *File → Import* in Anki. The save location is chosen in a native dialog.
+
+### Scanned PDFs (OCR)
+PDFs that have no text layer (scans) are detected automatically during conversion. When scanned pages are found, the converter falls back to OCR for those pages so the document can still be studied. This requires an optional OCR engine to be installed in the Python environment:
+
+```bash
+pip install pytesseract            # needs the Tesseract binary on PATH
+# or, with no external binary required:
+pip install rapidocr_onnxruntime
+```
+
+### Image Understanding (Vision LLM)
+The Flashcard Deck Creator includes an **"Understand Image"** action that sends a diagram or screenshot to a vision-capable LLM (OpenAI, Anthropic, Mistral, Google, or a local Ollama vision model such as `llava`). It returns a structured analysis (description, key terms, extracted facts, and a diagram flag) that you can use to guide automatic flashcard generation. A vision-capable provider must be enabled in Settings.
 
 ## Transfering/Deleting your Data
 

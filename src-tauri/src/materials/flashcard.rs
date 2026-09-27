@@ -307,21 +307,348 @@ impl Flashcard {
     }
 }
 
-pub fn export_to_anki(flashcards: Vec<Flashcard>) -> String {
-    flashcards
-        .iter()
-        .map(|card| {
-            let front = escape_anki_field(&card.front);
-            let back = escape_anki_field(&card.back);
-
-            format!("{}\t{}", front, back)
+pub fn export_to_anki(
+    flashcards: Vec<Flashcard>,
+    tags: Option<Vec<String>>,
+    format: &str,
+) -> String {
+    let tag_str = tags
+        .map(|t| {
+            t.iter()
+                .map(|tag| {
+                    // Anki tags cannot contain commas; keep spaces (Anki 23.10+)
+                    tag.replace(',', "-")
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
         })
+        .unwrap_or_default();
+
+    let mut rows: Vec<Vec<String>> = Vec::with_capacity(flashcards.len() + 1);
+    rows.push(vec!["Front".into(), "Back".into(), "Tags".into()]);
+    for card in &flashcards {
+        rows.push(vec![
+            escape_anki_field(&card.front),
+            escape_anki_field(&card.back),
+            tag_str.clone(),
+        ]);
+    }
+
+    // Anki expects a UTF-8 BOM at the start of imported TSV/CSV files,
+    // otherwise it may guess the encoding wrong and mangle non-Latin text
+    // (Cyrillic, CJK, Arabic, ...).
+    let mut out = if format.eq_ignore_ascii_case("csv") {
+        export_csv(&rows)
+    } else {
+        export_tsv(&rows)
+    };
+    out.insert_str(0, "\u{FEFF}");
+    out
+}
+
+fn escape_anki_field(text: &str) -> String {
+    // Anki note fields are HTML. Escape HTML-significant characters first so
+    // literal '<', '>', '&' in the user's text (e.g. code samples, math) do
+    // not get parsed as tags. Then convert line breaks to <br> so the final
+    // <br> tags remain intact.
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('\t', "    ")
+        .replace('\n', "<br>")
+        .replace('\r', "")
+}
+
+fn export_tsv(rows: &[Vec<String>]) -> String {
+    rows.iter()
+        .map(|row| row.join("\t"))
         .collect::<Vec<String>>()
         .join("\n")
 }
 
-fn escape_anki_field(text: &str) -> String {
-    text.replace('\t', "    ")  
-        .replace('\n', "<br>")   
-        .replace('\r', "")      
+fn export_csv(rows: &[Vec<String>]) -> String {
+    use std::io::Write;
+    let mut wtr = csv::Writer::from_writer(Vec::new());
+    for row in rows {
+        wtr.write_record(row).expect("CSV write failed");
+    }
+    let out = wtr.into_inner().expect("CSV into_inner failed");
+    String::from_utf8(out).expect("CSV not valid UTF-8")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    fn make_card(front: &str, back: &str) -> Flashcard {
+        Flashcard {
+            id: None,
+            deck_id: "test-deck".into(),
+            front: front.into(),
+            back: back.into(),
+            position: 0,
+            due_date: Utc::now(),
+            interval_days: 0,
+            ease_factor: 2.5,
+            repetitions: 0,
+            status: CardStatus::New,
+            last_reviewed: None,
+            learning_step: 0,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    // Strip the UTF-8 BOM that export_to_anki prepends for Anki.
+    fn strip_bom(s: &str) -> &str {
+        s.strip_prefix('\u{FEFF}').unwrap_or(s)
+    }
+
+    #[test]
+    fn test_normal_english_card() {
+        let cards = vec![make_card(
+            "What is ownership?",
+            "Rust's ownership system...",
+        )];
+        let result = export_to_anki(cards, None, "tsv");
+        let lines: Vec<&str> = strip_bom(&result).lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], "Front\tBack\tTags");
+        assert_eq!(lines[1], "What is ownership?\tRust's ownership system...\t");
+    }
+
+    #[test]
+    fn test_bom_present_in_tsv_and_csv() {
+        let cards = vec![make_card("Q", "A")];
+        assert!(export_to_anki(cards.clone(), None, "tsv").starts_with('\u{FEFF}'));
+        assert!(export_to_anki(cards, None, "csv").starts_with('\u{FEFF}'));
+    }
+
+    #[test]
+    fn test_html_special_chars_escaped() {
+        let cards = vec![make_card(
+            "if (a < b) && c > d",
+            "a & b<br>literal",
+        )];
+        let result = export_to_anki(cards, None, "tsv");
+        let line: &str = strip_bom(&result).lines().nth(1).unwrap();
+        assert!(line.contains("if (a &lt; b) &amp;&amp; c &gt; d"));
+        // Literal '<br>' typed by the user must stay literal, not become a tag
+        assert!(line.contains("a &amp; b&lt;br&gt;literal"));
+    }
+
+    #[test]
+    fn test_russian_text() {
+        let cards = vec![make_card("Что такое Rust?", "Язык программирования")];
+        let result = export_to_anki(cards, None, "tsv");
+        assert!(result.contains("Что такое Rust?"));
+        assert!(result.contains("Язык программирования"));
+    }
+
+    #[test]
+    fn test_arabic_text() {
+        let cards = vec![make_card("ما معنى كتاب؟", "Книга")];
+        let result = export_to_anki(cards, None, "tsv");
+        assert!(result.contains("ما معنى كتاب؟"));
+        assert!(result.contains("Книга"));
+    }
+
+    #[test]
+    fn test_comma_inside_content() {
+        let cards = vec![make_card("List items", "apple, banana, cherry")];
+        let result_csv = export_to_anki(cards.clone(), None, "csv");
+        // In CSV, fields with commas are quoted
+        assert!(result_csv.contains("\"apple, banana, cherry\""));
+
+        let result_tsv = export_to_anki(cards, None, "tsv");
+        // In TSV, commas are fine as-is
+        assert!(result_tsv.contains("apple, banana, cherry"));
+    }
+
+    #[test]
+    fn test_quotes_inside_content() {
+        let cards = vec![make_card(
+            "What is \"borrowing\"?",
+            "A \"reference\" to data",
+        )];
+        let result_csv = export_to_anki(cards.clone(), None, "csv");
+        assert!(result_csv.contains("\"What is \"\"borrowing\"\"?\""));
+        assert!(result_csv.contains("\"A \"\"reference\"\" to data\""));
+
+        let result_tsv = export_to_anki(cards, None, "tsv");
+        assert!(result_tsv.contains("What is \"borrowing\"?"));
+    }
+
+    #[test]
+    fn test_multiline_answer() {
+        let cards = vec![make_card("Q", "line1\nline2\nline3")];
+        let result = export_to_anki(cards, None, "tsv");
+        // Newlines converted to <br>
+        assert!(result.contains("line1<br>line2<br>line3"));
+    }
+
+    #[test]
+    fn test_code_block() {
+        let code = "fn main() {\n    println!(\"Hello\");\n}";
+        let cards = vec![make_card("What does this do?", code)];
+        let result = export_to_anki(cards, None, "tsv");
+        assert!(result.contains("fn main() {"));
+        assert!(result.contains("<br>"));
+    }
+
+    #[test]
+    fn test_tab_character() {
+        let cards = vec![make_card("Has\ttab", "value\twith\ttabs")];
+        let result = export_to_anki(cards, None, "tsv");
+        // Tabs replaced with 4 spaces
+        let line: &str = result.lines().nth(1).unwrap();
+        assert!(!line.contains("\t\t"));
+        assert!(line.contains("Has    tab"));
+        assert!(line.contains("value    with    tabs"));
+    }
+
+    #[test]
+    fn test_empty_optional_field() {
+        let cards = vec![make_card("Q", "A")];
+        let result = export_to_anki(cards, None, "tsv");
+        let lines: Vec<&str> = result.lines().collect();
+        // Last column (tags) should be empty
+        assert!(lines[1].ends_with('\t'));
+    }
+
+    #[test]
+    fn test_tags_export() {
+        let cards = vec![make_card("Q", "A")];
+        let tags = vec!["rust".to_string(), "ownership".to_string()];
+        let result = export_to_anki(cards, Some(tags), "tsv");
+        let lines: Vec<&str> = strip_bom(&result).lines().collect();
+        assert!(lines[1].ends_with("rust ownership"));
+    }
+
+    #[test]
+    fn test_tag_with_comma_sanitized() {
+        let cards = vec![make_card("Q", "A")];
+        let tags = vec!["chapter,1".to_string(), "rust".to_string()];
+        let result = export_to_anki(cards, Some(tags), "tsv");
+        let lines: Vec<&str> = strip_bom(&result).lines().collect();
+        assert!(lines[1].ends_with("chapter-1 rust"));
+    }
+
+    #[test]
+    fn test_utf8_validity() {
+        let cards = vec![
+            make_card("English", "Response"),
+            make_card("Русский текст", "Ответ"),
+            make_card("ما معنى كتاب؟", "Книга"),
+            make_card("日本語", "答え"),
+        ];
+        let result = export_to_anki(cards, None, "tsv");
+        // If we get here without panic, it's valid UTF-8
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_apkg_export_creates_valid_package() {
+        use crate::materials::anki_apkg::export_apkg;
+        use std::io::Read;
+
+        let cards = vec![
+            make_card("What is Rust?", "A systems programming language"),
+            make_card("Что такое Rust?", "Язык системного программирования"),
+        ];
+
+        let output_path = std::env::temp_dir().join(format!(
+            "studycraft_apkg_test_{}.apkg",
+            std::process::id()
+        ));
+        let db_path = std::env::temp_dir().join(format!(
+            "studycraft_apkg_readback_{}.db",
+            std::process::id()
+        ));
+
+        let result = export_apkg(&cards, "Test Deck", &output_path);
+        assert!(result.is_ok(), "export failed: {:?}", result);
+        assert!(output_path.exists());
+
+        // Verify it is a valid ZIP archive containing the expected entries.
+        let file = std::fs::File::open(&output_path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).expect("apkg should be a valid zip");
+
+        let names: Vec<String> = (0..archive.len())
+            .map(|i| {
+                archive
+                    .by_index(i)
+                    .unwrap()
+                    .enclosed_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect();
+        assert!(names.contains(&"collection.anki2".to_string()));
+        assert!(names.contains(&"metadata.json".to_string()));
+
+        // Verify the embedded SQLite db opens and contains the notes.
+        let db_bytes: Vec<u8> = {
+            let mut entry = archive.by_name("collection.anki2").unwrap();
+            let mut buf = Vec::new();
+            entry.read_to_end(&mut buf).unwrap();
+            buf
+        };
+        std::fs::write(&db_path, &db_bytes).unwrap();
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        let note_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM notes", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(note_count, 2);
+
+        let card_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cards", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(card_count, 2);
+
+        let field_data: String = conn
+            .query_row(
+                "SELECT data FROM notes WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            field_data,
+            "What is Rust?\x1fA systems programming language"
+        );
+
+        let deck_name: String = conn
+            .query_row("SELECT nme FROM decks WHERE id = 1", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(deck_name, "Test Deck");
+
+        // Verify model definition is present.
+        let model_name: String = conn
+            .query_row("SELECT name FROM models WHERE id = 1", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(model_name, "StudyCraft Basic");
+
+        // Verify metadata.json contents.
+        let meta_str: String = {
+            let mut entry = archive.by_name("metadata.json").unwrap();
+            let mut s = String::new();
+            entry.read_to_string(&mut s).unwrap();
+            s
+        };
+        let meta: serde_json::Value = serde_json::from_str(&meta_str).unwrap();
+        assert_eq!(meta["version"], 1);
+        assert_eq!(meta["deck"]["name"], "Test Deck");
+
+        // Cleanup.
+        let _ = std::fs::remove_file(&output_path);
+        let _ = std::fs::remove_file(&db_path);
+
+        // Empty deck must be rejected.
+        let empty_path = std::env::temp_dir().join(format!("studycraft_apkg_empty_{}.apkg", std::process::id()));
+        assert!(export_apkg(&[], "Empty", &empty_path).is_err());
+    }
 }

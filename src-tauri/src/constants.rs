@@ -115,6 +115,5 @@ pub fn get_default_agent_model(agent: &AgentType, provider: &ProviderType) -> &'
         (AgentType::SearchAgent, ProviderType::Google) => "gemini-2.5-flash",
         (AgentType::SearchAgent, ProviderType::Mistral) => "mistral-large-latest",
         (AgentType::SearchAgent, ProviderType::Ollama) => "llama3",
-
     }
 }

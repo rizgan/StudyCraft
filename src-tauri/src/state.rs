@@ -2,9 +2,9 @@ use crate::config::api_config::LlmUserConfig;
 use crate::config::app_settings::{AgentSettings, StudySettings};
 use crate::errors::AppResult;
 use crate::services::db_service::DbService;
+use crate::services::file_service::chromium_service::ChromiumService;
 use crate::services::llm_service::manager::LlmService;
 use crate::services::vector_service::vector_service::VectorService;
-use crate::services::file_service::chromium_service::ChromiumService;
 use tokio::sync::Mutex;
 
 /// Application state containing database service, LLM service, and vector service
@@ -42,7 +42,10 @@ impl AppState {
         let chromium_service = ChromiumService::new();
         if chromium_service.is_chromium_downloaded() {
             chromium_service.initialize().await.unwrap_or_else(|e| {
-                eprintln!("Failed to initialize Chromium: {}. Document preview features may not work.", e);
+                eprintln!(
+                    "Failed to initialize Chromium: {}. Document preview features may not work.",
+                    e
+                );
             });
         }
 
