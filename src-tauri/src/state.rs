@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 /// Application state containing database service, LLM service, and vector service
 pub struct AppState {
     pub db: Mutex<DbService>,
-    pub llm: Mutex<LlmService>,
+    pub llm: Mutex<LlmService>, // Note: LlmService must be Send + 'static for Tauri commands
     pub vector: Mutex<VectorService>,
     pub chromium: Mutex<ChromiumService>,
     pub study_settings: Mutex<StudySettings>,

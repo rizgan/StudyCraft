@@ -31,12 +31,76 @@ pub struct StudySettings {
     pub max_chunks_to_recover_from_search: u32,
 }
 
+/// Opt-in configuration for mnemonic image generation.
+///
+/// Disabled by default: image generation is costly and slow, so it must be
+/// explicitly enabled and pointed at a real provider. There is deliberately no
+/// mock/offline fallback — when disabled or unconfigured the UI must show the
+/// capability as unavailable rather than faking an image.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ImageGenerationConfig {
+    /// Master switch. `false` (default) means the capability is unavailable.
+    pub enabled: bool,
+    /// API endpoint base, e.g. `https://api.openai.com/v1`. The provider appends
+    /// `/images/generations`.
+    pub endpoint: String,
+    /// Model name used for image generation, e.g. `dall-e-3`.
+    pub model: String,
+    /// Requested image size understood by the provider, e.g. `1024x1024`.
+    pub size: String,
+    /// When true the API key is read from the shared keystore under
+    /// "OpenAI" (the same key management used by the LLM providers).
+    pub use_keystore_key: bool,
+}
+
+impl Default for ImageGenerationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint: "https://api.openai.com/v1".to_string(),
+            model: String::new(),
+            size: "1024x1024".to_string(),
+            use_keystore_key: true,
+        }
+    }
+}
+
+impl ImageGenerationConfig {
+    /// Returns a clear capability/configuration error when the feature cannot
+    /// be used. Production code must surface this to the UI instead of
+    /// attempting (or faking) a generation.
+    pub fn unavailability_error(&self) -> AppResult<()> {
+        if !self.enabled {
+            return Err(AppError::ApiError(
+                "Mnemonic image generation is disabled. Enable it in Settings → Agents → Mnemonics."
+                    .to_string(),
+            ));
+        }
+        if self.model.trim().is_empty() {
+            return Err(AppError::ApiError(
+                "Mnemonic image generation has no model configured. Set a model in Settings."
+                    .to_string(),
+            ));
+        }
+        if self.endpoint.trim().is_empty() {
+            return Err(AppError::ApiError(
+                "Mnemonic image generation has no endpoint configured."
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AgentSettings {
     pub agent_prompts: HashMap<AgentType, String>,
     pub agent_models_per_provider: HashMap<AgentType, HashMap<ProviderType, String>>,
     pub agent_max_tokens: HashMap<AgentType, u32>,
     pub agent_temperature: HashMap<AgentType, f32>,
+    /// Opt-in mnemonic image generation configuration (feature 35).
+    #[serde(default)]
+    pub image_generation: ImageGenerationConfig,
 }
 
 impl Default for StudySettings {
@@ -102,6 +166,7 @@ impl Default for AgentSettings {
             agent_models_per_provider,
             agent_max_tokens,
             agent_temperature,
+            image_generation: ImageGenerationConfig::default(),
         }
     }
 }

@@ -18,6 +18,7 @@ pub fn str_to_agent_type(agent_str: &str) -> Result<AgentType, String> {
         "TestContentCreator" => Ok(AgentType::TestContentCreator),
         "ExplanationAgent" => Ok(AgentType::ExplanationAgent),
         "SearchAgent" => Ok(AgentType::SearchAgent),
+        "MnemonicGenerator" => Ok(AgentType::MnemonicGenerator),
         _ => Err(format!("Unknown agent type: {}", agent_str)),
     }
 }

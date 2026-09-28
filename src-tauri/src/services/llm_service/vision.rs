@@ -6,6 +6,7 @@ use base64::engine::general_purpose::STANDARD;
 use flyllm::ProviderType;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::sync::OnceLock;
 
 /// Structured output produced by the vision (image understanding) pipeline.
 ///
@@ -82,20 +83,11 @@ pub async fn analyze_image(
     let base64_image = STANDARD.encode(&image_bytes);
     let mime = mime_type_for_path(image_path);
 
+    let client = shared_client();
     let raw = match provider {
-        ProviderType::OpenAI => {
+        ProviderType::OpenAI | ProviderType::Mistral => {
             call_openai_compatible(
-                endpoint,
-                &api_key,
-                &model_name,
-                &user_prompt,
-                &base64_image,
-                &mime,
-            )
-            .await
-        }
-        ProviderType::Mistral => {
-            call_openai_compatible(
+                client,
                 endpoint,
                 &api_key,
                 &model_name,
@@ -107,6 +99,7 @@ pub async fn analyze_image(
         }
         ProviderType::Anthropic => {
             call_anthropic(
+                client,
                 endpoint,
                 &api_key,
                 &model_name,
@@ -118,6 +111,7 @@ pub async fn analyze_image(
         }
         ProviderType::Google => {
             call_google(
+                client,
                 endpoint,
                 &api_key,
                 &model_name,
@@ -128,7 +122,8 @@ pub async fn analyze_image(
             .await
         }
         ProviderType::Ollama => {
-            call_ollama(&endpoint, &model_name, &user_prompt, &base64_image, &mime).await
+            call_ollama(client, &endpoint, &model_name, &user_prompt, &base64_image, &mime)
+                .await
         }
     }?;
 
@@ -269,7 +264,16 @@ fn mime_type_for_path(path: &str) -> String {
 // Provider calls
 // ---------------------------------------------------------------------------
 
+/// Shared HTTP client for all vision provider calls. A single `reqwest::Client`
+/// reuses its underlying connection pool across requests; creating one per call
+/// (the previous behaviour) discarded that pool and added needless overhead.
+fn shared_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(reqwest::Client::new)
+}
+
 async fn call_openai_compatible(
+    client: &reqwest::Client,
     endpoint: String,
     api_key: &str,
     model: &str,
@@ -277,7 +281,6 @@ async fn call_openai_compatible(
     image_b64: &str,
     mime: &str,
 ) -> AppResult<String> {
-    let client = reqwest::Client::new();
     let url = if endpoint.ends_with("chat/completions") {
         endpoint
     } else {
@@ -339,6 +342,7 @@ async fn call_openai_compatible(
 }
 
 async fn call_anthropic(
+    client: &reqwest::Client,
     endpoint: String,
     api_key: &str,
     model: &str,
@@ -346,7 +350,6 @@ async fn call_anthropic(
     image_b64: &str,
     mime: &str,
 ) -> AppResult<String> {
-    let client = reqwest::Client::new();
     let body = serde_json::json!({
         "model": model,
         "max_tokens": 2048,
@@ -406,6 +409,7 @@ async fn call_anthropic(
 }
 
 async fn call_google(
+    client: &reqwest::Client,
     endpoint: String,
     api_key: &str,
     model: &str,
@@ -413,7 +417,6 @@ async fn call_google(
     image_b64: &str,
     mime: &str,
 ) -> AppResult<String> {
-    let client = reqwest::Client::new();
     let url = format!(
         "{}/models/{}:generateContent",
         endpoint.trim_end_matches('/'),
@@ -465,13 +468,13 @@ async fn call_google(
 }
 
 async fn call_ollama(
+    client: &reqwest::Client,
     endpoint: &str,
     model: &str,
     prompt: &str,
     image_b64: &str,
     _mime: &str,
 ) -> AppResult<String> {
-    let client = reqwest::Client::new();
     let url = format!("{}/api/chat", endpoint.trim_end_matches('/'));
 
     let body = serde_json::json!({

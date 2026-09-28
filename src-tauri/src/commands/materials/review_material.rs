@@ -15,8 +15,8 @@ use crate::services::db_service::review_sessions::{
     TestReviewSession,
 };
 use crate::services::db_service::{
-    FlashcardDeckOperations, ReviewMaterialOperations, ReviewSessionOperations, TagOperations,
-    TestOperations,
+    CardMnemonicOperations, FlashcardDeckOperations, ReviewMaterialOperations,
+    ReviewSessionOperations, TagOperations, TestOperations,
 };
 use crate::state::AppState;
 use tauri::State;
@@ -169,9 +169,21 @@ pub async fn delete_flashcard_deck(
 ) -> Result<(), String> {
     let db_service = app_state.db.lock().await;
 
-    db_service
+    // Capture mnemonic image paths BEFORE the cascade deletes the rows.
+    let image_paths = db_service
+        .get_mnemonic_image_paths_for_deck(&deck_id)
+        .map_err(|e| format!("Failed to fetch mnemonic images: {}", e))?;
+
+    let result = db_service
         .delete_flashcard_deck(&deck_id)
-        .map_err(|e| format!("Failed to delete flashcard deck: {}", e))
+        .map_err(|e| format!("Failed to delete flashcard deck: {}", e));
+
+    // Best-effort cleanup of the now-orphaned image files.
+    for path in image_paths {
+        let _ = std::fs::remove_file(&path);
+    }
+
+    result
 }
 
 #[tauri::command]

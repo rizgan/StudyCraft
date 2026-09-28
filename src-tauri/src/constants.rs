@@ -77,6 +77,8 @@ pub const TEST_CONTENT_CREATOR_PROMPT: &str =
 pub const EXPLANATION_AGENT_PROMPT: &str =
     include_str!("services/llm_service/prompts/explanation_agent.txt");
 pub const SEARCH_AGENT_PROMPT: &str = include_str!("services/llm_service/prompts/search_agent.txt");
+pub const MNEMONIC_GENERATOR_PROMPT: &str =
+    include_str!("services/llm_service/prompts/mnemonic_generator.txt");
 
 /// Get default model for a specific agent and provider combination
 pub fn get_default_agent_model(agent: &AgentType, provider: &ProviderType) -> &'static str {
@@ -115,5 +117,12 @@ pub fn get_default_agent_model(agent: &AgentType, provider: &ProviderType) -> &'
         (AgentType::SearchAgent, ProviderType::Google) => "gemini-2.5-flash",
         (AgentType::SearchAgent, ProviderType::Mistral) => "mistral-large-latest",
         (AgentType::SearchAgent, ProviderType::Ollama) => "llama3",
+
+        // MnemonicGenerator
+        (AgentType::MnemonicGenerator, ProviderType::OpenAI) => "gpt-4.1-mini-2025-04-14",
+        (AgentType::MnemonicGenerator, ProviderType::Anthropic) => "claude-sonnet-4-20250514",
+        (AgentType::MnemonicGenerator, ProviderType::Google) => "gemini-2.5-flash",
+        (AgentType::MnemonicGenerator, ProviderType::Mistral) => "mistral-large-latest",
+        (AgentType::MnemonicGenerator, ProviderType::Ollama) => "llama3",
     }
 }

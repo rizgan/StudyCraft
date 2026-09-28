@@ -118,6 +118,8 @@ pub trait FlashcardDeckOperations {
         -> AppResult<Flashcard>;
     fn delete_flashcard_deck(&self, id: &str) -> AppResult<()>;
     fn update_flashcard_deck_name(&self, id: &str, name: &str) -> AppResult<()>;
+    /// Fetch a single flashcard by its id (across all decks).
+    fn get_flashcard(&self, card_id: i64) -> AppResult<Option<Flashcard>>;
     fn update_flashcard_deck(&self, request: requests::FlashcardDeckUpdateRequest)
         -> AppResult<()>;
 }
@@ -395,6 +397,21 @@ impl FlashcardDeckOperations for DbService {
             .map_err(|e| AppError::DbError(format!("Failed to commit transaction: {}", e)))?;
 
         Ok(())
+    }
+
+    fn get_flashcard(&self, card_id: i64) -> AppResult<Option<Flashcard>> {
+        let conn = self.conn.borrow();
+        let mut stmt = conn
+            .prepare("SELECT * FROM flashcards WHERE id = ?1")
+            .map_err(|e| AppError::DbError(format!("Failed to prepare flashcard query: {}", e)))?;
+        let rows = stmt
+            .query_map(rusqlite::params![card_id], FlashcardRow::from_row)
+            .map_err(|e| AppError::DbError(format!("Failed to query flashcard: {}", e)))?;
+        for row in rows {
+            let row = row.map_err(|e| AppError::DbError(format!("Failed to read flashcard row: {}", e)))?;
+            return Ok(Some(row.into_flashcard()?));
+        }
+        Ok(None)
     }
 
     fn update_flashcard_deck(

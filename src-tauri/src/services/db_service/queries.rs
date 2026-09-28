@@ -104,6 +104,74 @@ pub const CREATE_TEST_REVIEW_SESSIONS_TABLE: &str = "
         FOREIGN KEY (session_id) REFERENCES review_sessions (id) ON DELETE CASCADE
     )";
 
+// Flashcard mnemonic queries
+pub const CREATE_FLASHCARD_MNEMONICS_TABLE: &str = r#"
+    CREATE TABLE IF NOT EXISTS flashcard_mnemonics (
+        id TEXT PRIMARY KEY NOT NULL,
+        card_id INTEGER UNIQUE NOT NULL,
+        is_suitable BOOLEAN NOT NULL DEFAULT 1,
+        unsuitable_reason TEXT,
+        mnemonic_text TEXT NOT NULL DEFAULT '',
+        language_target_expression TEXT,
+        language_meaning TEXT,
+        language_transliteration TEXT,
+        image_prompt TEXT,
+        image_path TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (card_id) REFERENCES flashcards(id) ON DELETE CASCADE
+    );
+"#;
+
+pub const UPSERT_CARD_MNEMONIC: &str = r#"
+    INSERT INTO flashcard_mnemonics (
+        id, card_id, is_suitable, unsuitable_reason, mnemonic_text,
+        language_target_expression, language_meaning, language_transliteration,
+        image_prompt, image_path, created_at, updated_at
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+    ON CONFLICT (card_id) DO UPDATE SET
+        is_suitable = excluded.is_suitable,
+        unsuitable_reason = excluded.unsuitable_reason,
+        mnemonic_text = excluded.mnemonic_text,
+        language_target_expression = excluded.language_target_expression,
+        language_meaning = excluded.language_meaning,
+        language_transliteration = excluded.language_transliteration,
+        image_prompt = excluded.image_prompt,
+        image_path = excluded.image_path,
+        updated_at = excluded.updated_at
+"#;
+
+pub const UPDATE_CARD_MNEMONIC_IMAGE: &str = r#"
+    UPDATE flashcard_mnemonics SET image_path = ?1, updated_at = ?2 WHERE card_id = ?3
+"#;
+
+pub const GET_CARD_MNEMONIC: &str = r#"
+    SELECT id, card_id, is_suitable, unsuitable_reason, mnemonic_text,
+           language_target_expression, language_meaning, language_transliteration,
+           image_prompt, image_path, created_at, updated_at
+    FROM flashcard_mnemonics WHERE card_id = ?1
+"#;
+
+pub const GET_CARD_MNEMONICS_FOR_DECK: &str = r#"
+    SELECT m.id, m.card_id, m.is_suitable, m.unsuitable_reason, m.mnemonic_text,
+           m.language_target_expression, m.language_meaning, m.language_transliteration,
+           m.image_prompt, m.image_path, m.created_at, m.updated_at
+    FROM flashcard_mnemonics m
+    JOIN flashcards f ON f.id = m.card_id
+    WHERE f.deck_id = ?1
+"#;
+
+pub const DELETE_CARD_MNEMONIC: &str = r#"
+    DELETE FROM flashcard_mnemonics WHERE card_id = ?1
+"#;
+
+pub const GET_MNEMONIC_IMAGE_PATHS_FOR_DECK: &str = r#"
+    SELECT m.image_path
+    FROM flashcard_mnemonics m
+    JOIN flashcards f ON f.id = m.card_id
+    WHERE f.deck_id = ?1 AND m.image_path IS NOT NULL
+"#;
+
 // Study material queries
 pub const INSERT_STUDY_MATERIAL: &str =
     "

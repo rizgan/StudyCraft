@@ -71,6 +71,15 @@ async fn main() {
             commands::materials::review_material::get_flashcard_deck_details,
             commands::materials::review_material::export_flashcard_deck_to_anki,
             commands::materials::review_material::analyze_image_with_vision,
+            // Mnemonic Commands (features 31-36)
+            commands::materials::mnemonic::generate_card_mnemonic_cmd2,
+            commands::materials::mnemonic::generate_card_mnemonic_image_cmd2,
+            commands::materials::mnemonic::get_card_mnemonic_cmd2,
+            commands::materials::mnemonic::get_deck_mnemonics_cmd2,
+            commands::materials::mnemonic::delete_card_mnemonic_cmd2,
+            commands::materials::mnemonic::delete_card_mnemonic_image_cmd2,
+            commands::materials::mnemonic::get_mnemonic_image_raw_cmd2,
+            commands::materials::mnemonic::get_image_generation_status_cmd2,
             // Test Commands
             commands::materials::review_material::create_test,
             commands::materials::review_material::get_test_details,

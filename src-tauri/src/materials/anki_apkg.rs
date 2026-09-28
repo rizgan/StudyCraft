@@ -41,7 +41,6 @@ const MODEL_TMPLS: &str = r#"[{"name":"Card 1","q":"{{Front}}","a":"{{FrontSide}
 const MODEL_FLDS: &str = r#"[{"name":"Front","ord":0},{"name":"Back","ord":1}]"#;
 const MODEL_CMPLS: &str = "[]";
 const MODEL_NAME: &str = "StudyCraft Basic";
-const DECK_NAME: &str = "StudyCraft";
 const ANKI_DB_VERSION: i64 = 11;
 const ANKI_SCHEMA_VERSION: i64 = 21;
 

@@ -12,6 +12,8 @@ pub struct AppPaths {
     pub materials_dir: PathBuf,
     /// Directory for storing cover images
     pub covers_dir: PathBuf,
+    /// Directory for generated mnemonic images attached to flashcards
+    pub mnemonic_images_dir: PathBuf,
     /// Directory for storing a Chromium binary for rendering webpages and mds
     /// We do not create this one because we wanna later check if it is initialized or not
     pub chromium_dir: PathBuf,
@@ -48,6 +50,7 @@ impl Default for AppPaths {
         let config_dir = base_dir.join("config");
         let materials_dir = base_dir.join("materials");
         let covers_dir = materials_dir.join("covers");
+        let mnemonic_images_dir = materials_dir.join("mnemonic_images");
         let chromium_dir = base_dir.join("chromium");
 
         Self {
@@ -55,6 +58,7 @@ impl Default for AppPaths {
             config_dir,
             materials_dir,
             covers_dir,
+            mnemonic_images_dir,
             chromium_dir,
         }
     }
@@ -77,6 +81,9 @@ impl AppPaths {
         }
         if !self.covers_dir.exists() {
             std::fs::create_dir_all(&self.covers_dir)?;
+        }
+        if !self.mnemonic_images_dir.exists() {
+            std::fs::create_dir_all(&self.mnemonic_images_dir)?;
         }
         Ok(())
     }

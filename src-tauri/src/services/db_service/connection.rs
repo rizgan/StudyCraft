@@ -5,6 +5,7 @@ use rusqlite::Connection;
 use std::cell::RefCell;
 
 pub use super::flashcard_decks::FlashcardDeckOperations;
+pub use super::mnemonics::CardMnemonicOperations;
 pub use super::review_materials::ReviewMaterialOperations;
 pub use super::review_sessions::ReviewSessionOperations;
 pub use super::study_materials::StudyMaterialOperations;
@@ -52,6 +53,14 @@ impl DbService {
             .borrow()
             .execute(CREATE_FLASHCARDS_TABLE, [])
             .map_err(|e| AppError::DbError(format!("Failed to create flashcards table: {}", e)))?;
+
+        // Create flashcard mnemonics table (after flashcards so the FK resolves)
+        self.conn
+            .borrow()
+            .execute(CREATE_FLASHCARD_MNEMONICS_TABLE, [])
+            .map_err(|e| {
+                AppError::DbError(format!("Failed to create flashcard_mnemonics table: {}", e))
+            })?;
 
         // Create test questions table
         self.conn

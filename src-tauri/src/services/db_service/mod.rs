@@ -1,5 +1,6 @@
 pub mod connection;
 pub mod flashcard_decks;
+pub mod mnemonics;
 pub mod queries;
 pub mod review_materials;
 pub mod review_sessions;
@@ -8,6 +9,7 @@ pub mod tags;
 pub mod tests;
 
 pub use connection::DbService;
+pub use connection::CardMnemonicOperations;
 pub use connection::FlashcardDeckOperations;
 pub use connection::ReviewMaterialOperations;
 pub use connection::ReviewSessionOperations;

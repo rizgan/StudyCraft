@@ -367,7 +367,6 @@ fn export_tsv(rows: &[Vec<String>]) -> String {
 }
 
 fn export_csv(rows: &[Vec<String>]) -> String {
-    use std::io::Write;
     let mut wtr = csv::Writer::from_writer(Vec::new());
     for row in rows {
         wtr.write_record(row).expect("CSV write failed");

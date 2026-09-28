@@ -3,6 +3,7 @@ use crate::config::app_settings::AgentSettings;
 use crate::config::keystore::ApiKeystore;
 use crate::constants;
 use crate::errors::{AppError, AppResult};
+use crate::materials::flashcard_mnemonic::LanguageMnemonic;
 use crate::services::db_service::{
     FlashcardDeckOperations, StudyMaterialOperations, TestOperations,
 };
@@ -49,6 +50,55 @@ pub struct FlashcardGenerationRequest {
     pub materials: Vec<MaterialGenerationRequest>,
     pub language: Option<String>,
     pub concept: Option<String>,
+}
+
+/// Parsed, structured output of the mnemonic generator agent.
+#[derive(Debug, Clone, Default)]
+pub struct MnemonicGenerationOutput {
+    pub is_suitable: bool,
+    pub reason: Option<String>,
+    pub mnemonic: String,
+    pub image_prompt: Option<String>,
+    pub language: Option<LanguageMnemonic>,
+}
+
+impl Serialize for MnemonicGenerationOutput {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut st = serializer.serialize_struct("MnemonicGenerationOutput", 5)?;
+        st.serialize_field("is_suitable", &self.is_suitable)?;
+        st.serialize_field("reason", &self.reason)?;
+        st.serialize_field("mnemonic", &self.mnemonic)?;
+        st.serialize_field("image_prompt", &self.image_prompt)?;
+        st.serialize_field("language", &self.language)?;
+        st.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for MnemonicGenerationOutput {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Helper {
+            #[serde(default)]
+            is_suitable: bool,
+            #[serde(default)]
+            reason: Option<String>,
+            #[serde(default)]
+            mnemonic: String,
+            #[serde(default)]
+            image_prompt: Option<String>,
+            #[serde(default)]
+            language: Option<LanguageMnemonic>,
+        }
+        let h = Helper::deserialize(deserializer)?;
+        Ok(MnemonicGenerationOutput {
+            is_suitable: h.is_suitable,
+            reason: h.reason,
+            mnemonic: h.mnemonic,
+            image_prompt: h.image_prompt,
+            language: h.language,
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -557,6 +607,75 @@ impl LlmService {
         );
 
         Ok(all_flashcards)
+    }
+
+    /// Generate a text mnemonic for a single flashcard fact (feature 31).
+    ///
+    /// `kind` is the desired mnemonic style ("auto", "association", "acronym",
+    /// "story", "visual", "chunking"). `language_mode` is "on" when the card is
+    /// a language pair and the model must fill the structured language fields.
+    ///
+    /// This capability is fully independent of image generation: a failure here
+    /// must not affect image state and vice versa.
+    pub async fn generate_card_mnemonic(
+        &self,
+        fact: &str,
+        kind: &str,
+        language_mode: &str,
+        learner_profile: Option<&str>,
+        agent_settings: &AgentSettings,
+    ) -> AppResult<MnemonicGenerationOutput> {
+        let task_definition =
+            self.get_task_definition_from_settings(&AgentType::MnemonicGenerator, agent_settings);
+        let prompt_template = agent_settings
+            .agent_prompts
+            .get(&AgentType::MnemonicGenerator)
+            .map(|s| s.as_str())
+            .unwrap_or(AgentType::MnemonicGenerator.get_prompt_template());
+
+        let formatted_prompt = prompt_template
+            .replace("{fact}", fact)
+            .replace("{kind}", kind)
+            .replace("{language_mode}", language_mode)
+            .replace(
+                "{learner_profile}",
+                learner_profile.unwrap_or("General knowledge learner"),
+            );
+
+        let request = GenerationRequest::builder(formatted_prompt)
+            .task(&task_definition.name)
+            .build();
+
+        let responses = self.manager.batch_generate(vec![request]).await;
+
+        let first = responses
+            .first()
+            .ok_or_else(|| AppError::LlmError("No response from LLM for mnemonic generation".into()))?;
+        if !first.success {
+            return Err(AppError::LlmError(format!(
+                "Mnemonic generation failed: {}",
+                first
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "unknown error".to_string())
+            )));
+        }
+        let raw = first.content.clone();
+
+        let parsed = crate::materials::flashcard_mnemonic::parse_mnemonic_response(&raw)
+            .map_err(|e| AppError::LlmError(format!("Failed to parse mnemonic response: {}", e)))?;
+
+        // Build the output explicitly (the derive has a known trait-bound
+        // issue with the nested Option<LanguageMnemonic> field in this
+        // context, so we construct it by hand).
+        let out = MnemonicGenerationOutput {
+            is_suitable: parsed.is_suitable,
+            reason: parsed.reason.clone(),
+            mnemonic: parsed.mnemonic.clone(),
+            image_prompt: parsed.image_prompt.clone(),
+            language: parsed.language.clone(),
+        };
+        Ok(out)
     }
 
     /// Generate flashcard explanation

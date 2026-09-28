@@ -9,6 +9,7 @@ pub enum AgentType {
     TestContentCreator,
     ExplanationAgent,
     SearchAgent,
+    MnemonicGenerator,
 }
 
 impl AgentType {
@@ -19,6 +20,7 @@ impl AgentType {
             Self::TestContentCreator,
             Self::ExplanationAgent,
             Self::SearchAgent,
+            Self::MnemonicGenerator,
         ]
     }
 
@@ -29,6 +31,7 @@ impl AgentType {
             Self::TestContentCreator => "TestContentCreator",
             Self::ExplanationAgent => "ExplanationAgent",
             Self::SearchAgent => "SearchAgent",
+            Self::MnemonicGenerator => "MnemonicGenerator",
         }
     }
 
@@ -53,6 +56,10 @@ impl AgentType {
             Self::SearchAgent => TaskDefinition::new("Knowledge Search")
                 .with_max_tokens(2500)
                 .with_temperature(0.3),
+
+            Self::MnemonicGenerator => TaskDefinition::new("Mnemonic Generation")
+                .with_max_tokens(1500)
+                .with_temperature(0.7),
         }
     }
 
@@ -63,6 +70,7 @@ impl AgentType {
             Self::TestContentCreator => constants::TEST_CONTENT_CREATOR_PROMPT,
             Self::ExplanationAgent => constants::EXPLANATION_AGENT_PROMPT,
             Self::SearchAgent => constants::SEARCH_AGENT_PROMPT,
+            Self::MnemonicGenerator => constants::MNEMONIC_GENERATOR_PROMPT,
         }
     }
 }
@@ -75,6 +83,7 @@ impl From<String> for AgentType {
             "TestContentCreator" => Self::TestContentCreator,
             "ExplanationAgent" => Self::ExplanationAgent,
             "SearchAgent" => Self::SearchAgent,
+            "MnemonicGenerator" => Self::MnemonicGenerator,
             _ => Self::ConceptExtractor, // will not be the case, but use concept one as failcase
         }
     }
