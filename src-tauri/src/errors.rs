@@ -1,3 +1,4 @@
+use serde::Serialize;
 use std::error::Error;
 use std::fmt;
 use std::io;
@@ -55,6 +56,22 @@ impl Error for AppError {
             AppError::IoError(err) => Some(err),
             _ => None,
         }
+    }
+}
+
+/// Serialize `AppError` as its display string.
+///
+/// This is required so that Tauri commands can return `AppResult<T>` directly:
+/// Tauri's `#[tauri::command]` macro requires the error type of the returned
+/// `Result` to implement `IpcResponse` (which is auto-derived from
+/// `Serialize`). Without this, any command returning `AppResult<T>` fails to
+/// compile with an `async_kind` / `ResultFutureKind` trait-bound error.
+///
+/// The frontend receives the error as a plain string, which matches the
+/// `AppError` -> `String` convention already used across the codebase.
+impl Serialize for AppError {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
     }
 }
 

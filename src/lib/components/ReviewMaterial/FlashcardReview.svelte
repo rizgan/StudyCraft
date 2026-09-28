@@ -15,6 +15,9 @@ import { FlashcardReviewLogic, type Card } from '../../logic/ReviewMaterial/flas
 import { llmStore } from '../../stores/llmStore';
 import { toastStore } from '../../stores/toastStore';
 
+// Mnemonic helpers
+import { getCardMnemonic, loadMnemonicImageUrl, invalidateMnemonicImageUrl, type CardMnemonicResponse } from '../../logic/ReviewMaterial/mnemonic';
+
 // Props
 export let deck = null;
 export let isOpen = false;
@@ -34,6 +37,8 @@ let confetti = false;
 let showAnswer = false;
 let isExplaining = false;
 let explanation = '';
+let currentMnemonic: CardMnemonicResponse | null = null;
+let mnemonicImageUrl: string | null = null;
 let reviewSettings = null;
 let showSettings = false;
 let tempSettings = {
@@ -206,6 +211,7 @@ function flipCard() {
     if (!showAnswer) {
       showAnswer = true;
       isFlipped = true;
+      loadCurrentMnemonic();
     } else {
       showAnswer = false;
       isFlipped = false;
@@ -328,6 +334,34 @@ function resetCardState() {
   isFlipped = false;
   explanation = '';
   isExplaining = false;
+}
+
+function disposeMnemonicImage() {
+  if (mnemonicImageUrl) {
+    URL.revokeObjectURL(mnemonicImageUrl);
+    mnemonicImageUrl = null;
+  }
+}
+
+async function loadCurrentMnemonic() {
+  disposeMnemonicImage();
+  currentMnemonic = null;
+  if (!currentCard || typeof currentCard.id !== 'number' || currentCard.id <= 0) return;
+  const cardId = currentCard.id;
+  try {
+    const m = await getCardMnemonic(cardId);
+    // Only show the mnemonic if the card is still current (avoid a stale result
+    // being attached to a card the user has already advanced past).
+    if (m && currentCard && currentCard.id === cardId) {
+      currentMnemonic = m;
+      if (m.image_path) {
+        invalidateMnemonicImageUrl(m.card_id);
+        mnemonicImageUrl = await loadMnemonicImageUrl(m.card_id);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load card mnemonic:', e);
+  }
 }
 
 function handlePrevious() {
@@ -841,6 +875,43 @@ onDestroy(() => {
                 </div>
                 <div class="fr-explanation-content">
                   {explanation}
+                </div>
+              </div>
+            {/if}
+
+            <!-- Mnemonic Section (when a mnemonic exists and answer is shown) -->
+            {#if showAnswer && currentMnemonic && currentMnemonic.is_suitable}
+              <div class="fr-mnemonic-panel" in:fade={{ duration: 300 }}>
+                <div class="fr-mnemonic-header">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2a7 7 0 0 0-7 7c0 2 1 3.5 2 4.5V17h10v-3.5c1-1 2-2.5 2-4.5a7 7 0 0 0-7-7z"></path>
+                    <line x1="9" y1="20" x2="15" y2="20"></line>
+                  </svg>
+                  <span>Mnemonic</span>
+                </div>
+                <div class="fr-mnemonic-content">
+                  <div class="fr-mnemonic-text">{currentMnemonic.mnemonic_text}</div>
+
+                  {#if currentMnemonic.language}
+                    <div class="fr-mnemonic-language">
+                      <div class="fr-mnemonic-lang-row">
+                        <span class="fr-mnemonic-lang-label">Target</span>
+                        <span class="fr-mnemonic-lang-value">{currentMnemonic.language.target_expression}</span>
+                      </div>
+                      <div class="fr-mnemonic-lang-row">
+                        <span class="fr-mnemonic-lang-label">Meaning</span>
+                        <span class="fr-mnemonic-lang-value">{currentMnemonic.language.meaning}</span>
+                      </div>
+                      <div class="fr-mnemonic-lang-row">
+                        <span class="fr-mnemonic-lang-label">Pronunciation</span>
+                        <span class="fr-mnemonic-lang-value">{currentMnemonic.language.transliteration}</span>
+                      </div>
+                    </div>
+                  {/if}
+
+                  {#if mnemonicImageUrl}
+                    <img src={mnemonicImageUrl} alt="" class="fr-mnemonic-image" aria-label="Mnemonic association image" />
+                  {/if}
                 </div>
               </div>
             {/if}
@@ -1512,6 +1583,80 @@ onDestroy(() => {
     font-size: 0.95rem;
     max-height: 200px;
     overflow-y: auto;
+  }
+
+  .fr-mnemonic-panel {
+    flex: 0 0 auto;
+    background: color-mix(in srgb, var(--success) 5%, var(--background));
+    border-radius: var(--border-radius);
+    border: 1px solid color-mix(in srgb, var(--success) 25%, var(--border));
+    overflow: hidden;
+  }
+
+  .fr-mnemonic-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-md) var(--space-lg);
+    background: color-mix(in srgb, var(--success) 10%, var(--background));
+    border-bottom: 1px solid color-mix(in srgb, var(--success) 20%, var(--border));
+    color: var(--success);
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  .fr-mnemonic-content {
+    padding: var(--space-lg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 0.95rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    max-height: 280px;
+    overflow-y: auto;
+  }
+
+  .fr-mnemonic-language {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--border);
+    border-radius: var(--border-radius);
+    background: var(--surface);
+  }
+
+  .fr-mnemonic-lang-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+  }
+
+  .fr-mnemonic-lang-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    min-width: 7rem;
+  }
+
+  .fr-mnemonic-lang-value {
+    font-size: 0.9rem;
+    color: var(--text);
+    unicode-bidi: plaintext;
+  }
+
+  .fr-mnemonic-image {
+    width: 100%;
+    max-width: 420px;
+    max-height: 300px;
+    object-fit: contain;
+    border: 1px solid var(--border);
+    border-radius: var(--border-radius);
+    background: var(--surface);
+    align-self: center;
   }
 
   .fr-control-section {

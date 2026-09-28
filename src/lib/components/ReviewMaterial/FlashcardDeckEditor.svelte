@@ -8,6 +8,7 @@
   // Components
   import Button from '../Shared/Button.svelte';
   import FlashcardModal from './FlashcardModal.svelte';
+  import MnemonicPanel from './MnemonicPanel.svelte';
 
   // Logic & Types
   import { FlashcardDeckEditorLogic, type ReviewMaterial, type DeckEditFormData } from '../../logic/ReviewMaterial/flashcardDeckEditor';
@@ -45,6 +46,10 @@
   let error = '';
   let hasUnsavedChanges = false;
   let isSubmitting = false; // Lock to prevent concurrent save operations
+
+  // Language-pair mnemonic mode (target expression + meaning kept distinct).
+  let languageMnemonicMode = false;
+  let learnerProfile = '';
 
   // Reactive statements
   $: stepsComplete = {
@@ -275,6 +280,31 @@
                 }}
               />
             </div>
+
+            <div class="fdc-form-field">
+              <label for="mnemonic-learner-profile">Learner profile (optional)</label>
+              <input
+                id="mnemonic-learner-profile"
+                type="text"
+                bind:value={learnerProfile}
+                placeholder="e.g. Visual learner, strong in music, beginner Spanish"
+                disabled={isSaving}
+                class="input"
+                on:keydown={(e) => e.stopPropagation()}
+              />
+            </div>
+
+            <div class="fdc-form-field fdc-toggle-field">
+              <label class="fdc-toggle-label" for="mnemonic-language-mode">
+                <input
+                  id="mnemonic-language-mode"
+                  type="checkbox"
+                  bind:checked={languageMnemonicMode}
+                  disabled={isSaving}
+                />
+                Language-pair mode (keep target expression, meaning &amp; pronunciation distinct)
+              </label>
+            </div>
           </div>
         </div>
 
@@ -330,6 +360,14 @@
                   ></textarea>
                 </div>
               </div>
+
+              <MnemonicPanel
+                cardId={card.id}
+                {front}
+                {back}
+                languageMode={languageMnemonicMode}
+                {learnerProfile}
+              />
             </div>
           {/each}
         </div>

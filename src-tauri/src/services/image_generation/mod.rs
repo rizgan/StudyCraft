@@ -92,10 +92,13 @@ mod tests {
 
     #[test]
     fn test_build_provider_disabled_returns_clear_error() {
-        let keystore = ApiKeystore::load();
+        let keystore = ApiKeystore::new();
         let result = build_provider(&disabled_config(), &keystore);
         assert!(result.is_err());
-        let msg = result.unwrap_err().to_string();
+        let msg = match result {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected an error"),
+        };
         assert!(
             msg.contains("disabled") || msg.contains("Disabled"),
             "expected a clear disabled-capability error, got: {}",
@@ -108,10 +111,13 @@ mod tests {
         let mut config = disabled_config();
         config.enabled = true;
         config.model = "  ".into();
-        let keystore = ApiKeystore::load();
+        let keystore = ApiKeystore::new();
         let result = build_provider(&config, &keystore);
         assert!(result.is_err());
-        let msg = result.unwrap_err().to_string();
+        let msg = match result {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected an error"),
+        };
         assert!(msg.contains("model"), "got: {}", msg);
     }
 

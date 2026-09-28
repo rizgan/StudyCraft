@@ -138,6 +138,16 @@
     }
   }
 
+  function updateImageGenSetting(field, value) {
+    if (!agentSettings || !agentSettings.image_generation) return;
+    agentSettings.image_generation = {
+      ...agentSettings.image_generation,
+      [field]: value,
+    };
+    agentSettings = { ...agentSettings };
+    agentSettingsChanged = JSON.stringify(agentSettings) !== JSON.stringify(originalAgentSettings);
+  }
+
   function updateAgentSetting(settingType, agentType, value, provider = null) {
     if (!agentSettings) return;
 
@@ -247,6 +257,87 @@
           <p>Configure how different AI agents behave, including their prompts, model preferences, and generation parameters. Each agent type serves a specific purpose in the study workflow. Beware that changing the prompts might end up in unexpected behavior.</p>
         </div>
       </div>
+
+      <!-- Mnemonic Image Generation (opt-in, costly capability) -->
+      {#if agentSettings.image_generation}
+        <div class="image-gen-card">
+          <div class="image-gen-header">
+            <h4>Mnemonic Image Generation</h4>
+            <label class="image-gen-toggle">
+              <input
+                type="checkbox"
+                checked={agentSettings.image_generation.enabled}
+                on:change={(e) => updateImageGenSetting('enabled', (e.target as HTMLInputElement).checked)}
+              />
+              <span>Enabled</span>
+            </label>
+          </div>
+
+          <p class="image-gen-note">
+            Image generation is a costly and slow capability and is disabled by default. When enabled,
+            the <strong>Mnemonic Generator</strong> agent can produce a visual association image for each
+            flashcard. There is no mock/fallback provider: if the model or API key is missing, image
+            generation is simply unavailable (text mnemonics are not affected).
+          </p>
+
+          <div class="image-gen-fields">
+            <div class="setting-item">
+              <label class="setting-label">
+                Endpoint
+                <span class="setting-description">Base URL of an OpenAI-compatible image API (the app appends /images/generations)</span>
+              </label>
+              <input
+                type="text"
+                class="setting-input"
+                value={agentSettings.image_generation.endpoint || ''}
+                on:input={(e) => updateImageGenSetting('endpoint', (e.target as HTMLInputElement).value)}
+                placeholder="https://api.openai.com/v1"
+              />
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-item">
+                <label class="setting-label">
+                  Model
+                  <span class="setting-description">e.g. dall-e-3</span>
+                </label>
+                <input
+                  type="text"
+                  class="setting-input"
+                  value={agentSettings.image_generation.model || ''}
+                  on:input={(e) => updateImageGenSetting('model', (e.target as HTMLInputElement).value)}
+                  placeholder="dall-e-3"
+                />
+              </div>
+
+              <div class="setting-item">
+                <label class="setting-label">
+                  Size
+                  <span class="setting-description">e.g. 1024x1024</span>
+                </label>
+                <input
+                  type="text"
+                  class="setting-input"
+                  value={agentSettings.image_generation.size || ''}
+                  on:input={(e) => updateImageGenSetting('size', (e.target as HTMLInputElement).value)}
+                  placeholder="1024x1024"
+                />
+              </div>
+            </div>
+
+            <div class="setting-item image-gen-key">
+              <label class="image-gen-toggle">
+                <input
+                  type="checkbox"
+                  checked={agentSettings.image_generation.use_keystore_key}
+                  on:change={(e) => updateImageGenSetting('use_keystore_key', (e.target as HTMLInputElement).checked)}
+                />
+                <span>Use the OpenAI key stored in Settings → API Keys</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      {/if}
 
       <div class="agents-grid">
         {#each Object.keys(agentSettings.agent_prompts).sort() as agentType (agentType)}
@@ -475,6 +566,63 @@
     margin: 0;
     color: var(--text-secondary);
     font-size: 0.9rem;
+  }
+
+  .image-gen-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--border-radius);
+    padding: var(--space-md);
+    margin-bottom: var(--space-lg);
+  }
+
+  .image-gen-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-md);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .image-gen-header h4 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .image-gen-note {
+    margin: 0 0 var(--space-md);
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  .image-gen-fields {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .image-gen-key {
+    margin-bottom: 0;
+  }
+
+  .image-gen-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 0.9rem;
+    color: var(--text);
+    cursor: pointer;
+    font-weight: 500;
+  }
+
+  .image-gen-toggle input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
   }
 
   .agents-grid {

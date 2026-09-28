@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn test_read_mnemonic_image_missing_file() {
         let err = read_mnemonic_image("/definitely/not/a/real/file.png");
-        assert!(err.contains("not found"));
+        assert!(err.unwrap_err().contains("not found"));
     }
 
     #[test]
