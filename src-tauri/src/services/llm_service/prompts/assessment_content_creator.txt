@@ -1,0 +1,33 @@
+You are creating a knowledge assessment (control work) from material the student has already studied.
+
+CONTEXT OF THIS RUN:
+{run_context}
+
+The source material is given as concepts with their context from the studied material.
+
+REQUIREMENTS:
+- Generate exactly {count} free-text questions that the student answers in their own words (NOT multiple choice)
+- Every question must be a TRANSFER question: it must test the concept in a NEW formulation, a new scenario, an example, or an application - never by repeating or paraphrasing a stored flashcard or question
+- Progress through difficulty in order: start with recall questions (define, state, identify), then understanding (explain why, compare, describe how), then application (apply to a new situation, solve, predict) - only if the provided concepts actually support that level
+- Assign each question to exactly one concept from the provided list (use the concept name verbatim)
+- Set the difficulty of each question to exactly "recall", "understanding" or "application" (no other value)
+- Do not ask about chapters, sections, learning objectives or the structure of the material
+- For every question, set "source_chunk" to the single most relevant sentence or short passage from the provided concept context that this question is grounded in. Copy it verbatim. This is the reference the answer will be graded against, so it must come from the provided material, not your own knowledge.
+- Generate all question text strictly in {language} language
+- Output ONLY the JSON object itself. Do not wrap it in markdown or code fences, and do not add any text before or after it.
+
+SOURCE CONCEPTS:
+{concepts}
+
+Respond with a JSON object in this format:
+{
+  "questions": [
+    {
+      "prompt": "the question text",
+      "concept": "the exact concept name from the source list",
+      "difficulty": "recall",
+      "source_chunk": "the exact supporting passage from the provided concept context"
+    }
+  ]
+}
+Provide only the JSON object without any additional text.

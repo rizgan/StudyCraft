@@ -15,7 +15,7 @@ export interface StudyMaterial {
 export interface ReviewMaterial {
   id: string;
   name: string;
-  type: 'flashcard_deck' | 'test';
+  type: 'flashcard_deck' | 'test' | 'assessment';
   cards_count?: number;
   questions_count?: number;
   last_review?: string;
@@ -23,6 +23,11 @@ export interface ReviewMaterial {
   review_material_id?: string | any;
   review_material_name?: string;
   review_material_type?: string | any;
+  /**
+   * Present when the material is identified as language-learning content.
+   * Absent (undefined) for general materials.
+   */
+  language_learning?: { learning_language: string; base_language: string } | null;
 }
 
 export type MaterialType = 'study' | 'review';
@@ -249,11 +254,12 @@ async function updateSpecificMaterial(identifier: string) {
           
           const reviewMaterialType = String(material.rm_type || '').toLowerCase();
           const isFlashcardDeck = reviewMaterialType === 'flashcard_deck' || reviewMaterialType === 'flashcarddeck';
+          const isAssessment = reviewMaterialType === 'assessment';
           
           const formattedMaterial: ReviewMaterial = {
             id: materialId,
             name: material.display_name,
-            type: isFlashcardDeck ? "flashcard_deck" : "test",
+            type: isFlashcardDeck ? "flashcard_deck" : isAssessment ? "assessment" : "test",
             last_review: material.last_review,
             tags: [],
             review_material_id: materialId,
@@ -274,6 +280,15 @@ async function updateSpecificMaterial(identifier: string) {
                 console.error(`Failed to get cards for deck ${materialId}:`, cardError);
                 console.error("Full error details:", cardError);
                 formattedMaterial.cards_count = 0;
+              }
+            } else if (formattedMaterial.type === "assessment") {
+              try {
+                const questions = await invoke<any[]>("get_assessment_questions", { assessmentId: materialId });
+                formattedMaterial.questions_count = questions?.length || 0;
+                console.log(`Loaded ${formattedMaterial.questions_count} questions for assessment ${materialId}`);
+              } catch (err) {
+                console.error(`Failed to get questions for assessment ${materialId}:`, err);
+                formattedMaterial.questions_count = 0;
               }
             } else if (formattedMaterial.type === "test") {
               try {
@@ -488,13 +503,20 @@ async function updateSpecificMaterial(identifier: string) {
 
   async function addReviewMaterial(materialData: {
     name: string;
-    type: 'flashcard_deck' | 'test';
+    type: 'flashcard_deck' | 'test' | 'assessment';
     tags?: string[];
   }): Promise<string> {
     const state = await get();
     const materialId = uuidv4();
     const uniqueName = generateUniqueReviewMaterialName(materialData.name, state.materials);
     
+    const reviewMaterialType =
+      materialData.type === 'flashcard_deck'
+        ? 'FlashcardDeck'
+        : materialData.type === 'assessment'
+          ? 'Assessment'
+          : 'Test';
+
     const tempMaterial: ReviewMaterial = {
       id: materialId,
       name: uniqueName,
@@ -502,9 +524,9 @@ async function updateSpecificMaterial(identifier: string) {
       tags: materialData.tags || [],
       review_material_id: materialId,
       review_material_name: uniqueName,
-      review_material_type: materialData.type === 'flashcard_deck' ? 'FlashcardDeck' : 'Test',
+      review_material_type: reviewMaterialType,
       cards_count: materialData.type === 'flashcard_deck' ? 0 : undefined,
-      questions_count: materialData.type === 'test' ? 0 : undefined,
+      questions_count: materialData.type !== 'flashcard_deck' ? 0 : undefined,
     };
     
     update(state => ({
@@ -542,7 +564,18 @@ async function updateSpecificMaterial(identifier: string) {
       if (isStudyMaterial(material)) {
         await invoke('delete_study_material', { id: identifier });
       } else {
-        await invoke('delete_flashcard_deck', { deckId: identifier });
+        // Route deletion by review-material type. Assessments and tests have
+        // their own child tables (questions, sessions, answers) that cascade
+        // through their own delete commands; the flashcard command only
+        // handles deck/cards/mnemonics and must not be used for them.
+        const reviewType = (material as ReviewMaterial).type;
+        if (reviewType === 'assessment') {
+          await invoke('delete_assessment', { assessmentId: identifier });
+        } else if (reviewType === 'test') {
+          await invoke('delete_test', { testId: identifier });
+        } else {
+          await invoke('delete_flashcard_deck', { deckId: identifier });
+        }
       }
       
       update(state => ({

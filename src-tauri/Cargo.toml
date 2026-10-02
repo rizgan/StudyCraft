@@ -58,3 +58,10 @@ tauri-plugin-shell = "2"
 chromiumoxide = { version = "0.7", features = ["tokio-runtime", "_fetcher-rusttls-tokio"], default-features = false }
 base64 = "0.22.1"
 csv = "1"
+
+[features]
+__integration_tests = []
+
+[dev-dependencies]
+tempfile = "3"
+StudyCraft = { path = ".", features = ["__integration_tests"] }

@@ -33,7 +33,11 @@ pub trait ImageGenerationProvider: Send + Sync {
     /// resolved behind a `dyn ImageGenerationProvider` and the returned future
     /// can be `.await`ed directly by callers (Box::pin is required for the
     /// auto-deref `.await` on `Box<dyn Future>` to work).
-    fn generate<'a>(&'a self, prompt: &'a str, output_path: &'a Path) -> PinnedBoxFuture<'a, AppResult<()>>;
+    fn generate<'a>(
+        &'a self,
+        prompt: &'a str,
+        output_path: &'a Path,
+    ) -> PinnedBoxFuture<'a, AppResult<()>>;
 }
 
 /// A pinned, boxed, 'a-tied future used to keep [`ImageGenerationProvider`]
@@ -62,17 +66,18 @@ pub fn build_provider(
             })?
     } else {
         return Err(AppError::ApiError(
-            "Mnemonic image generation must use the keystore for API keys."
-                .to_string(),
+            "Mnemonic image generation must use the keystore for API keys.".to_string(),
         ));
     };
 
-    Ok(Box::new(openai_compatible::OpenAiCompatibleImageProvider::new(
-        config.endpoint.trim_end_matches('/').to_string(),
-        api_key,
-        config.model.trim().to_string(),
-        config.size.trim().to_string(),
-    )))
+    Ok(Box::new(
+        openai_compatible::OpenAiCompatibleImageProvider::new(
+            config.endpoint.trim_end_matches('/').to_string(),
+            api_key,
+            config.model.trim().to_string(),
+            config.size.trim().to_string(),
+        ),
+    ))
 }
 
 /// Shared HTTP client for image-generation provider calls (mirrors the

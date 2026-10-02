@@ -4,6 +4,7 @@
   import {
     SmartphoneCharging as SmartphoneChargingIcon,
     ListCheck as ListCheckIcon,
+    ClipboardCheck as ClipboardCheckIcon,
   } from "lucide-svelte";
 
   // Props
@@ -13,6 +14,7 @@
   // Callbacks
   export let onCreateFlashcardDeck = () => {};
   export let onCreateTest = () => {};
+  export let onCreateAssessment = () => {};
 </script>
 
 {#if show}
@@ -24,6 +26,10 @@
     <button class="create-menu-item" on:click={onCreateTest}>
       <ListCheckIcon size={18} />
       Test
+    </button>
+    <button class="create-menu-item" on:click={onCreateAssessment}>
+      <ClipboardCheckIcon size={18} />
+      Assessment
     </button>
   </div>
 {/if}

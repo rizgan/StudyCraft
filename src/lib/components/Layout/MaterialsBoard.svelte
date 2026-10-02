@@ -12,6 +12,8 @@
   import TestCreator from "../ReviewMaterial/TestCreator.svelte";
   import TestEditor from "../ReviewMaterial/TestEditor.svelte";
   import TestReview from "../ReviewMaterial/TestReview.svelte";
+  import AssessmentCreator from "../ReviewMaterial/AssessmentCreator.svelte";
+  import AssessmentReview from "../ReviewMaterial/AssessmentReview.svelte";
   import CreateMenu from "./CreateMenu.svelte";
 
   import { MaterialsManager } from "../../logic/materialsManager";
@@ -50,6 +52,7 @@
   let showFlashcardCreator = false;
   let showFlashcardDeckEditor = false;
   let showTestCreator = false;
+  let showAssessmentCreator = false;
   let showTestEditor = false;
   let showingReview = false;
   let currentReviewDeck: ReviewMaterial | null = null;
@@ -69,7 +72,7 @@
   let createMenuButton: HTMLElement;
 
   let currentReviewMaterial: ReviewMaterial | null = null;
-  let reviewMaterialType: "flashcard_deck" | "test" | null = null;
+  let reviewMaterialType: "flashcard_deck" | "test" | "assessment" | null = null;
   let selectionPromises = new Map<string, Promise<boolean>>();
 
   let isDragOver = false;
@@ -230,10 +233,16 @@
     }
   }
 
+  function handleCreateAssessment() {
+    showCreateMenu = false;
+    showAssessmentCreator = true;
+  }
+
   function closeCreators() {
     showFlashcardCreator = false;
     showFlashcardDeckEditor = false;
     showTestCreator = false;
+    showAssessmentCreator = false;
     showTestEditor = false;
     currentEditingDeck = null;
     currentEditingTest = null;
@@ -382,8 +391,7 @@
 
   function handleReviewMaterial(material: ReviewMaterial) {
     currentReviewMaterial = material;
-    reviewMaterialType =
-      material.type === "flashcard_deck" ? "flashcard_deck" : "test";
+    reviewMaterialType = material.type as "flashcard_deck" | "test" | "assessment";
     showingReview = true;
   }
 
@@ -431,6 +439,12 @@
       console.log("Dispatching showMaterialsSelector for TestCreator");
       onShowMaterialsSelector({
         fromTestCreator: true,
+        currentSelectedMaterials: detail.currentSelectedMaterials || [],
+      });
+    } else if (detail.fromAssessmentCreator) {
+      console.log("Dispatching showMaterialsSelector for AssessmentCreator");
+      onShowMaterialsSelector({
+        fromAssessmentCreator: true,
         currentSelectedMaterials: detail.currentSelectedMaterials || [],
       });
     }
@@ -650,7 +664,7 @@
     </div>
   {/if}
 
-  {#if !$materialsStore.isLoading && $materialsStore.materials.length === 0 && !showFlashcardCreator && !showFlashcardDeckEditor && !showTestCreator && !showTestEditor}
+  {#if !$materialsStore.isLoading && $materialsStore.materials.length === 0 && !showFlashcardCreator && !showFlashcardDeckEditor && !showTestCreator && !showTestEditor && !showAssessmentCreator}
     <div class="empty-state">
       <h3>No {materialType} materials yet</h3>
       {#if materialType === "study"}
@@ -662,7 +676,7 @@
           text="Browse Files"
         />
       {:else}
-        <p>Create flashcard decks or tests to start reviewing</p>
+        <p>Create flashcard decks, tests, or assessments to start reviewing</p>
         <div class="empty-actions">
           <div class="create-button-container" bind:this={createMenuButton}>
             <Button
@@ -676,6 +690,7 @@
               position="below"
               onCreateFlashcardDeck={handleCreateFlashcardDeck}
               onCreateTest={handleCreateTest}
+              onCreateAssessment={handleCreateAssessment}
             />
           </div>
         </div>
@@ -722,8 +737,16 @@
     />
   {/if}
 
+  {#if materialType === "review" && showAssessmentCreator}
+    <AssessmentCreator
+      onClose={closeCreators}
+      onCreated={handleMaterialCreated}
+      onShowMaterialsSelector={handleShowMaterialsSelector}
+    />
+  {/if}
 
-<div style="display: {$materialsStore.materials.length === 0 || (materialType === 'review' && (showFlashcardCreator || showFlashcardDeckEditor || showTestCreator || showTestEditor) && !$materialsStore.selectionMode) ? 'none' : 'block'}">      
+
+<div style="display: {$materialsStore.materials.length === 0 || (materialType === 'review' && (showFlashcardCreator || showFlashcardDeckEditor || showTestCreator || showAssessmentCreator || showTestEditor) && !$materialsStore.selectionMode) ? 'none' : 'block'}">      
   <MaterialsGrid
         {materialType}
         {zoomLevel}
@@ -763,6 +786,13 @@
     {:else if reviewMaterialType === "test"}
       <TestReview
         test={currentReviewMaterial}
+        isOpen={showingReview}
+        onClose={handleCloseReview}
+        onReviewCompleted={handleReviewCompleted}
+      />
+    {:else if reviewMaterialType === "assessment"}
+      <AssessmentReview
+        assessment={currentReviewMaterial}
         isOpen={showingReview}
         onClose={handleCloseReview}
         onReviewCompleted={handleReviewCompleted}

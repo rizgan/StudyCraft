@@ -72,8 +72,14 @@ pub const CONCEPT_EXTRACTOR_PROMPT: &str =
     include_str!("services/llm_service/prompts/concept_extractor.txt");
 pub const FLASHCARD_CONTENT_CREATOR_PROMPT: &str =
     include_str!("services/llm_service/prompts/flashcard_content_creator.txt");
+pub const LANGUAGE_FLASHCARD_CONTENT_CREATOR_PROMPT: &str =
+    include_str!("services/llm_service/prompts/language_flashcard_content_creator.txt");
 pub const TEST_CONTENT_CREATOR_PROMPT: &str =
     include_str!("services/llm_service/prompts/test_content_creator.txt");
+pub const ASSESSMENT_CONTENT_CREATOR_PROMPT: &str =
+    include_str!("services/llm_service/prompts/assessment_content_creator.txt");
+pub const ASSESSMENT_ANSWER_EVALUATOR_PROMPT: &str =
+    include_str!("services/llm_service/prompts/assessment_answer_evaluator.txt");
 pub const EXPLANATION_AGENT_PROMPT: &str =
     include_str!("services/llm_service/prompts/explanation_agent.txt");
 pub const SEARCH_AGENT_PROMPT: &str = include_str!("services/llm_service/prompts/search_agent.txt");
@@ -97,12 +103,43 @@ pub fn get_default_agent_model(agent: &AgentType, provider: &ProviderType) -> &'
         (AgentType::FlashcardContentCreator, ProviderType::Mistral) => "mistral-large-latest",
         (AgentType::FlashcardContentCreator, ProviderType::Ollama) => "llama3",
 
+        // LanguageFlashcardContentCreator
+        (AgentType::LanguageFlashcardContentCreator, ProviderType::OpenAI) => {
+            "gpt-4.1-mini-2025-04-14"
+        }
+        (AgentType::LanguageFlashcardContentCreator, ProviderType::Anthropic) => {
+            "claude-sonnet-4-20250514"
+        }
+        (AgentType::LanguageFlashcardContentCreator, ProviderType::Google) => "gemini-2.5-flash",
+        (AgentType::LanguageFlashcardContentCreator, ProviderType::Mistral) => {
+            "mistral-large-latest"
+        }
+        (AgentType::LanguageFlashcardContentCreator, ProviderType::Ollama) => "llama3",
+
         // TestContentCreator
         (AgentType::TestContentCreator, ProviderType::OpenAI) => "gpt-4.1-mini-2025-04-14",
         (AgentType::TestContentCreator, ProviderType::Anthropic) => "claude-sonnet-4-20250514",
         (AgentType::TestContentCreator, ProviderType::Google) => "gemini-2.5-flash",
         (AgentType::TestContentCreator, ProviderType::Mistral) => "mistral-large-latest",
         (AgentType::TestContentCreator, ProviderType::Ollama) => "llama3",
+
+        // AssessmentContentCreator
+        (AgentType::AssessmentContentCreator, ProviderType::OpenAI) => "gpt-4.1-mini-2025-04-14",
+        (AgentType::AssessmentContentCreator, ProviderType::Anthropic) => {
+            "claude-sonnet-4-20250514"
+        }
+        (AgentType::AssessmentContentCreator, ProviderType::Google) => "gemini-2.5-flash",
+        (AgentType::AssessmentContentCreator, ProviderType::Mistral) => "mistral-large-latest",
+        (AgentType::AssessmentContentCreator, ProviderType::Ollama) => "llama3",
+
+        // AssessmentAnswerEvaluator
+        (AgentType::AssessmentAnswerEvaluator, ProviderType::OpenAI) => "gpt-4.1-mini-2025-04-14",
+        (AgentType::AssessmentAnswerEvaluator, ProviderType::Anthropic) => {
+            "claude-sonnet-4-20250514"
+        }
+        (AgentType::AssessmentAnswerEvaluator, ProviderType::Google) => "gemini-2.5-flash",
+        (AgentType::AssessmentAnswerEvaluator, ProviderType::Mistral) => "mistral-large-latest",
+        (AgentType::AssessmentAnswerEvaluator, ProviderType::Ollama) => "llama3",
 
         // ExplanationAgent
         (AgentType::ExplanationAgent, ProviderType::OpenAI) => "gpt-4.1-mini-2025-04-14",

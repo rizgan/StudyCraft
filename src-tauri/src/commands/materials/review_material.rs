@@ -4,9 +4,9 @@ use crate::config::api_config::LlmUserConfig;
 use crate::config::utils::internal_str_to_provider_type;
 use crate::constants;
 use crate::materials::anki_apkg::export_apkg;
-use crate::services::llm_service::vision::{self, ImageAnalysis};
 use crate::materials::flashcard::export_to_anki;
 use crate::materials::flashcard::{Flashcard, FlashcardCounts, NewFlashcard};
+use crate::materials::language_learning::{FlashcardLanguage, LanguageLearningSettings};
 use crate::materials::review_material;
 use crate::materials::test::{NewTestQuestion, TestQuestionWithAnswers};
 use crate::services::db_service::review_sessions::{
@@ -15,9 +15,10 @@ use crate::services::db_service::review_sessions::{
     TestReviewSession,
 };
 use crate::services::db_service::{
-    CardMnemonicOperations, FlashcardDeckOperations, ReviewMaterialOperations,
-    ReviewSessionOperations, TagOperations, TestOperations,
+    CardMnemonicOperations, FlashcardDeckOperations, FlashcardLanguageOperations,
+    ReviewMaterialOperations, ReviewSessionOperations, TagOperations, TestOperations,
 };
+use crate::services::llm_service::vision::{self, ImageAnalysis};
 use crate::state::AppState;
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
@@ -51,13 +52,22 @@ pub async fn create_flashcard_deck(
     name: String,
     tags: Vec<String>,
     cards: Vec<NewFlashcard>,
+    language_learning: Option<LanguageLearningSettings>,
+    card_language: Vec<Option<FlashcardLanguage>>,
     app_state: State<'_, AppState>,
 ) -> Result<responses::FlashcardDeckCreationResponse, String> {
     review_material::validate_deck_input(&name, &cards)?;
     let db_service = app_state.db.lock().await;
 
     let deck = db_service
-        .create_flashcard_deck(&id, &name, &tags, &cards)
+        .create_flashcard_deck(
+            &id,
+            &name,
+            &tags,
+            &cards,
+            language_learning.as_ref(),
+            &card_language,
+        )
         .map_err(|e| format!("Failed to create flashcard deck: {}", e))?;
 
     let response = responses::FlashcardDeckCreationResponse {
@@ -67,6 +77,18 @@ pub async fn create_flashcard_deck(
     };
 
     Ok(response)
+}
+
+#[tauri::command]
+pub async fn get_flashcard_language_for_deck(
+    deck_id: String,
+    app_state: State<'_, AppState>,
+) -> Result<Vec<FlashcardLanguage>, String> {
+    let db_service = app_state.db.lock().await;
+
+    db_service
+        .get_flashcard_language_for_deck(&deck_id)
+        .map_err(|e| format!("Failed to get flashcard language metadata: {}", e))
 }
 
 #[tauri::command]
@@ -110,6 +132,7 @@ pub async fn get_flashcards_for_review(
 pub async fn update_flashcard_after_review(
     card_id: i64,
     difficulty: String,
+    review_event_id: String,
     app_state: State<'_, AppState>,
 ) -> Result<Flashcard, String> {
     match difficulty.as_str() {
@@ -118,10 +141,13 @@ pub async fn update_flashcard_after_review(
             return Err("Invalid difficulty rating".to_string());
         }
     }
+    if review_event_id.trim().is_empty() {
+        return Err("Review event id must not be blank".to_string());
+    }
     let db_service = app_state.db.lock().await;
 
     db_service
-        .update_flashcard_after_review(card_id, &difficulty)
+        .update_flashcard_after_review(card_id, &difficulty, &review_event_id)
         .map_err(|e| format!("Failed to update flashcard: {}", e))
 }
 
@@ -135,6 +161,38 @@ pub async fn update_flashcard_deck(
     db_service
         .update_flashcard_deck(request)
         .map_err(|e| format!("Failed to update flashcard deck: {}", e))
+}
+
+/// Read the persisted language-learning identification of a flashcard deck
+/// (None when the deck is not language-learning).
+#[tauri::command]
+pub async fn get_flashcard_deck_language_learning(
+    deck_id: String,
+    app_state: State<'_, AppState>,
+) -> Result<Option<LanguageLearningSettings>, String> {
+    let db_service = app_state.db.lock().await;
+
+    let material = db_service
+        .get_review_material(&deck_id)
+        .map_err(|e| format!("Failed to get review material: {}", e))?;
+
+    Ok(material.and_then(|m| m.language_learning))
+}
+
+/// Turn language-learning mode on (with the language pair) or off (None) for
+/// an existing flashcard deck. Existing cards and their metadata are
+/// untouched; only the deck identification is updated.
+#[tauri::command]
+pub async fn update_flashcard_deck_language_learning(
+    deck_id: String,
+    language_learning: Option<LanguageLearningSettings>,
+    app_state: State<'_, AppState>,
+) -> Result<(), String> {
+    let db_service = app_state.db.lock().await;
+
+    db_service
+        .update_review_material_language_learning(&deck_id, language_learning.as_ref())
+        .map_err(|e| format!("Failed to update language-learning mode: {}", e))
 }
 
 #[tauri::command]
@@ -469,7 +527,14 @@ pub async fn export_flashcard_deck_to_anki(
             .chars()
             .filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_'))
             .collect();
-        let default_name = format!("{}.apkg", if safe_name.is_empty() { "StudyCraft Deck" } else { &safe_name });
+        let default_name = format!(
+            "{}.apkg",
+            if safe_name.is_empty() {
+                "StudyCraft Deck"
+            } else {
+                &safe_name
+            }
+        );
 
         let save_result = app
             .dialog()
@@ -484,7 +549,9 @@ pub async fn export_flashcard_deck_to_anki(
             None => return Err("Export cancelled".to_string()),
         };
 
-        let path_buf = path.into_path().map_err(|e| format!("Invalid save path: {}", e))?;
+        let path_buf = path
+            .into_path()
+            .map_err(|e| format!("Invalid save path: {}", e))?;
 
         export_apkg(&flashcards, &deck.display_name, &path_buf)
             .map_err(|e| format!("Failed to write .apkg file: {}", e))?;
@@ -519,7 +586,13 @@ pub async fn analyze_image_with_vision(
         None => None,
     };
 
-    vision::analyze_image(&config, &image_path, prompt, model, provider_override.as_ref())
-        .await
-        .map_err(|e| e.to_string())
+    vision::analyze_image(
+        &config,
+        &image_path,
+        prompt,
+        model,
+        provider_override.as_ref(),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }

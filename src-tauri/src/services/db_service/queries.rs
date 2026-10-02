@@ -23,7 +23,10 @@ pub const CREATE_REVIEW_MATERIALS_TABLE: &str = "
         last_review TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        deleted BOOLEAN DEFAULT 0
+        deleted BOOLEAN DEFAULT 0,
+        is_language_learning BOOLEAN NOT NULL DEFAULT 0,
+        learning_language TEXT,
+        base_language TEXT
     )";
 
 pub const CREATE_FLASHCARDS_TABLE: &str = "
@@ -103,6 +106,51 @@ pub const CREATE_TEST_REVIEW_SESSIONS_TABLE: &str = "
         time_per_question_seconds REAL DEFAULT 0.0,
         FOREIGN KEY (session_id) REFERENCES review_sessions (id) ON DELETE CASCADE
     )";
+
+// Flashcard language-learning metadata queries
+//
+// 1:1 relation with flashcards. Vocabulary is the canonical language data of
+// a card; the mnemonic (flashcard_mnemonics) is an optional aid attached to
+// the same card, never the other way around.
+pub const CREATE_FLASHCARD_LANGUAGE_TABLE: &str = r#"
+    CREATE TABLE IF NOT EXISTS flashcard_language (
+        card_id INTEGER PRIMARY KEY,
+        direction TEXT NOT NULL DEFAULT 'recognition',
+        task TEXT NOT NULL DEFAULT 'translation',
+        target_expression TEXT NOT NULL,
+        meaning TEXT NOT NULL,
+        pronunciation TEXT,
+        example TEXT,
+        example_translation TEXT,
+        context TEXT,
+        grammatical_information TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (card_id) REFERENCES flashcards (id) ON DELETE CASCADE
+    )
+"#;
+
+pub const INSERT_FLASHCARD_LANGUAGE: &str = r#"
+    INSERT INTO flashcard_language (
+        card_id, direction, task, target_expression, meaning,
+        pronunciation, example, example_translation, context, grammatical_information
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+"#;
+
+pub const GET_FLASHCARD_LANGUAGE_BY_CARD: &str = r#"
+    SELECT card_id, direction, task, target_expression, meaning,
+           pronunciation, example, example_translation, context, grammatical_information
+    FROM flashcard_language WHERE card_id = ?1
+"#;
+
+pub const GET_FLASHCARD_LANGUAGE_FOR_DECK: &str = r#"
+    SELECT l.card_id, l.direction, l.task, l.target_expression, l.meaning,
+           l.pronunciation, l.example, l.example_translation, l.context, l.grammatical_information
+    FROM flashcard_language l
+    JOIN flashcards f ON f.id = l.card_id
+    WHERE f.deck_id = ?1
+    ORDER BY l.card_id
+"#;
 
 // Flashcard mnemonic queries
 pub const CREATE_FLASHCARD_MNEMONICS_TABLE: &str = r#"
@@ -235,17 +283,20 @@ pub const DELETE_STUDY_MATERIAL: &str = "
 
 // Review material queries
 pub const INSERT_REVIEW_MATERIAL: &str = "
-    INSERT INTO review_materials (id, name, type, last_review, created_at, updated_at) 
-    VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
+    INSERT INTO review_materials (id, name, type, last_review, created_at, updated_at,
+        is_language_learning, learning_language, base_language) 
+    VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?5, ?6, ?7)";
 
 pub const GET_ALL_REVIEW_MATERIALS: &str = "
-    SELECT id, name, type, last_review, created_at, updated_at, COALESCE(deleted, 0) as deleted 
+    SELECT id, name, type, last_review, created_at, updated_at, COALESCE(deleted, 0) as deleted, 
+        is_language_learning, learning_language, base_language 
     FROM review_materials 
     WHERE (deleted = 0 OR deleted IS NULL) 
     ORDER BY updated_at DESC";
 
 pub const GET_REVIEW_MATERIAL_BY_ID: &str = "
-    SELECT id, name, type, last_review, created_at, updated_at, COALESCE(deleted, 0) as deleted 
+    SELECT id, name, type, last_review, created_at, updated_at, COALESCE(deleted, 0) as deleted, 
+        is_language_learning, learning_language, base_language 
     FROM review_materials 
     WHERE id = ?1 AND (deleted = 0 OR deleted IS NULL)";
 
@@ -253,6 +304,12 @@ pub const UPDATE_REVIEW_MATERIAL_NAME: &str = "
     UPDATE review_materials 
     SET name = ?1, updated_at = CURRENT_TIMESTAMP 
     WHERE id = ?2";
+
+pub const UPDATE_REVIEW_MATERIAL_LANGUAGE_LEARNING: &str = "
+    UPDATE review_materials
+    SET is_language_learning = ?2, learning_language = ?3, base_language = ?4,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?1";
 
 pub const DELETE_REVIEW_MATERIAL: &str = "
     UPDATE review_materials 
@@ -589,3 +646,307 @@ pub const GET_ALL_TESTS: &str = "
 
 pub const UPDATE_TEST_NAME: &str = "
     UPDATE review_materials SET name = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2 AND type = 'test'";
+
+// Assessment queries
+pub const CREATE_ASSESSMENT_QUESTIONS_TABLE: &str = "
+    CREATE TABLE IF NOT EXISTS assessment_questions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        assessment_id TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        concept TEXT NOT NULL,
+        difficulty TEXT NOT NULL,
+        expected_content TEXT NOT NULL DEFAULT '',
+        position INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (assessment_id) REFERENCES review_materials (id) ON DELETE CASCADE
+    )";
+
+pub const CREATE_ASSESSMENT_SESSIONS_TABLE: &str = "
+    CREATE TABLE IF NOT EXISTS assessment_sessions (
+        id TEXT PRIMARY KEY,
+        assessment_id TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        status TEXT NOT NULL DEFAULT 'active',
+        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        finished_at TIMESTAMP,
+        completed_at TIMESTAMP,
+        FOREIGN KEY (assessment_id) REFERENCES review_materials (id) ON DELETE CASCADE
+    )";
+
+// Immutable, session-owned question snapshot. When an assessment session starts,
+// the questions the student will see are copied here. Answers reference these
+// snapshot rows (not the mutable canonical assessment_questions), so replacing
+// the canonical question set on reassessment never destroys a previous attempt.
+pub const CREATE_ASSESSMENT_SESSION_QUESTIONS_TABLE: &str = "
+    CREATE TABLE IF NOT EXISTS assessment_session_questions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        source_question_id INTEGER,
+        prompt TEXT NOT NULL,
+        concept TEXT NOT NULL,
+        difficulty TEXT NOT NULL,
+        expected_content TEXT NOT NULL DEFAULT '',
+        position INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES assessment_sessions (id) ON DELETE CASCADE,
+        FOREIGN KEY (source_question_id) REFERENCES assessment_questions (id) ON DELETE SET NULL,
+        UNIQUE (session_id, source_question_id)
+    )";
+
+pub const CREATE_ASSESSMENT_ANSWERS_TABLE: &str = "
+    CREATE TABLE IF NOT EXISTS assessment_answers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        question_id INTEGER NOT NULL,
+        student_answer TEXT NOT NULL,
+        grade TEXT,
+        rationale TEXT,
+        misconception TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES assessment_sessions (id) ON DELETE CASCADE,
+        FOREIGN KEY (question_id) REFERENCES assessment_session_questions (id) ON DELETE CASCADE,
+        UNIQUE (session_id, question_id)
+    )";
+
+pub const INSERT_ASSESSMENT_QUESTION: &str = "
+    INSERT INTO assessment_questions (assessment_id, prompt, concept, difficulty, expected_content, position)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
+
+pub const UPDATE_ASSESSMENT_QUESTION: &str = "
+    UPDATE assessment_questions
+    SET prompt = ?2, concept = ?3, difficulty = ?4, expected_content = ?5, position = ?6, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?1";
+
+pub const GET_ASSESSMENT_QUESTIONS: &str = "
+    SELECT id, assessment_id, prompt, concept, difficulty, expected_content, position, created_at, updated_at
+    FROM assessment_questions
+    WHERE assessment_id = ?1
+    ORDER BY position";
+
+pub const GET_ASSESSMENT_QUESTION_BY_ID: &str = "
+    SELECT id, assessment_id, prompt, concept, difficulty, expected_content, position, created_at, updated_at
+    FROM assessment_questions
+    WHERE id = ?1";
+
+pub const DELETE_ASSESSMENT_QUESTION: &str = "
+    DELETE FROM assessment_questions WHERE id = ?1 AND assessment_id = ?2";
+
+pub const DELETE_ALL_ASSESSMENT_QUESTIONS: &str = "
+    DELETE FROM assessment_questions WHERE assessment_id = ?1";
+
+pub const COUNT_ASSESSMENT_QUESTIONS: &str = "
+    SELECT COUNT(*) FROM assessment_questions WHERE assessment_id = ?1";
+
+pub const INSERT_ASSESSMENT_SESSION: &str = "
+    INSERT INTO assessment_sessions (id, assessment_id, status, started_at)
+    VALUES (?1, ?2, 'active', CURRENT_TIMESTAMP)";
+
+pub const GET_ASSESSMENT_SESSIONS_BY_ASSESSMENT: &str = "
+    SELECT s.id, s.assessment_id, s.created_at, s.status, s.started_at,
+           s.completed_at,
+           (SELECT COUNT(*) FROM assessment_answers a WHERE a.session_id = s.id) AS answer_count
+    FROM assessment_sessions s
+    WHERE s.assessment_id = ?1
+    ORDER BY s.created_at DESC, s.id DESC";
+
+pub const GET_PENDING_ASSESSMENT_SESSION: &str = "
+    SELECT id FROM assessment_sessions
+    WHERE assessment_id = ?1 AND status = 'active'
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1";
+
+// ---- Session question snapshot ----
+// The snapshot row is written once when the session starts and is immutable
+// afterwards: a conflicting insert keeps the original snapshot instead of
+// overwriting it (DO NOTHING, never DO UPDATE).
+pub const INSERT_ASSESSMENT_SESSION_QUESTION: &str = "
+    INSERT INTO assessment_session_questions (session_id, source_question_id, prompt, concept, difficulty, expected_content, position)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+    ON CONFLICT (session_id, source_question_id) DO NOTHING";
+
+pub const GET_ASSESSMENT_SESSION_QUESTIONS: &str = "
+    SELECT id, session_id, source_question_id, prompt, concept, difficulty, expected_content, position, created_at
+    FROM assessment_session_questions
+    WHERE session_id = ?1
+    ORDER BY position, id";
+
+pub const GET_ASSESSMENT_SESSION_QUESTION_BY_ID: &str = "
+    SELECT id, session_id, source_question_id, prompt, concept, difficulty, expected_content, position, created_at
+    FROM assessment_session_questions
+    WHERE id = ?1 AND session_id = ?2";
+
+pub const COUNT_ASSESSMENT_SESSION_QUESTIONS: &str = "
+    SELECT COUNT(*) FROM assessment_session_questions WHERE session_id = ?1";
+
+pub const DELETE_ASSESSMENT_SESSION_QUESTIONS: &str = "
+    DELETE FROM assessment_session_questions WHERE session_id = ?1";
+
+// ---- Answers (reference the session question snapshot) ----
+pub const INSERT_ASSESSMENT_ANSWER: &str = "
+    INSERT INTO assessment_answers (session_id, question_id, student_answer, grade, rationale, misconception)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+    ON CONFLICT (session_id, question_id) DO UPDATE SET
+        student_answer = excluded.student_answer,
+        grade = excluded.grade,
+        rationale = excluded.rationale,
+        misconception = excluded.misconception,
+        -- created_at is the historical evidence timestamp of record: it is
+        -- set once on first insert and never rewritten by a re-upsert, so the
+        -- evidence's recency weighting is stable.
+        created_at = assessment_answers.created_at";
+
+pub const GET_ASSESSMENT_ANSWERS_BY_SESSION: &str = "
+    SELECT a.id, a.session_id, a.question_id, q.prompt, q.concept, q.difficulty,
+           q.expected_content, a.student_answer, a.grade, a.rationale, a.misconception, a.created_at
+    FROM assessment_answers a
+    JOIN assessment_session_questions q ON a.question_id = q.id
+    WHERE a.session_id = ?1
+    ORDER BY q.position, a.id";
+
+pub const GET_ASSESSMENT_SESSIONS_WITH_ANSWERS: &str = "
+    SELECT s.id, s.assessment_id, s.created_at
+    FROM assessment_sessions s
+    WHERE s.assessment_id = ?1
+    ORDER BY s.created_at DESC";
+
+pub const GET_LAST_ASSESSMENT_SESSION: &str = "
+    SELECT id FROM assessment_sessions
+    WHERE assessment_id = ?1
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1";
+
+pub const GET_LAST_COMPLETED_ASSESSMENT_SESSION: &str = "
+    SELECT id FROM assessment_sessions
+    WHERE assessment_id = ?1 AND status = 'completed'
+    ORDER BY completed_at DESC, created_at DESC, id DESC
+    LIMIT 1";
+
+pub const COMPLETE_ASSESSMENT_SESSION: &str = "
+    UPDATE assessment_sessions
+    SET status = 'completed', finished_at = CURRENT_TIMESTAMP, completed_at = CURRENT_TIMESTAMP
+    WHERE id = ?1 AND status = 'active'";
+
+// ---------------------------------------------------------------------------
+// Concept Mastery Engine
+// ---------------------------------------------------------------------------
+//
+// The `concepts` table is the canonical concept registry: one row per
+// normalized concept identity. Concept identity is the normalized label
+// itself (the only concept identifier the schema carries), so the id IS the
+// normalized label. No fuzzy merging is ever performed at the database level.
+//
+// The `flashcard_reviews` table is the raw per-review flashcard log. It is
+// the raw evidence of record for flashcard mastery: every review is appended
+// here at the moment it happens, and is never rewritten. Flashcards are
+// hard-deleted in this codebase (their FKs cascade), so a deleted card takes
+// its own review rows with it and nothing else.
+
+pub const CREATE_CONCEPTS_TABLE: &str = "
+    CREATE TABLE IF NOT EXISTS concepts (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)";
+
+pub const CREATE_CONCEPT_MATERIAL_OCCURRENCES_TABLE: &str = "
+    CREATE TABLE IF NOT EXISTS concept_material_occurrences (
+        concept_id TEXT NOT NULL,
+        material_id TEXT NOT NULL,
+        first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (concept_id, material_id),
+        FOREIGN KEY (concept_id) REFERENCES concepts (id) ON DELETE CASCADE,
+        FOREIGN KEY (material_id) REFERENCES review_materials (id) ON DELETE CASCADE
+)";
+
+pub const CREATE_FLASHCARD_REVIEWS_TABLE: &str = "
+    CREATE TABLE IF NOT EXISTS flashcard_reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        card_id INTEGER NOT NULL,
+        rating TEXT NOT NULL,
+        reviewed_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        -- Stable identity of one review action (client-generated). A review
+        -- retried with the same event id is a no-op; a new legitimate review
+        -- of the same card always carries a fresh event id. This makes the
+        -- whole review operation (scheduling + evidence) idempotent at the DB
+        -- level, not just the INSERT.
+        review_event_id TEXT UNIQUE,
+        FOREIGN KEY (card_id) REFERENCES flashcards (id) ON DELETE CASCADE
+)";
+
+pub const INSERT_FLASHCARD_REVIEW: &str = "
+    INSERT INTO flashcard_reviews (card_id, rating, reviewed_at, review_event_id)
+    VALUES (?1, ?2, ?3, ?4)
+    ON CONFLICT (review_event_id) DO NOTHING";
+
+pub const GET_FLASHCARD_REVIEWS_BY_CARD: &str = "
+    SELECT r.id, r.card_id, f.deck_id, r.rating, r.reviewed_at,
+           f.front, l.direction, l.target_expression
+    FROM flashcard_reviews r
+    JOIN flashcards f ON r.card_id = f.id
+    LEFT JOIN flashcard_language l ON l.card_id = f.id
+    WHERE r.card_id = ?1
+    ORDER BY r.reviewed_at ASC, r.id ASC";
+
+pub const GET_ALL_FLASHCARD_REVIEWS: &str = "
+    SELECT r.id, r.card_id, f.deck_id, r.rating, r.reviewed_at,
+           f.front, l.direction, l.target_expression
+    FROM flashcard_reviews r
+    JOIN flashcards f ON r.card_id = f.id
+    LEFT JOIN flashcard_language l ON l.card_id = f.id
+    JOIN review_materials m ON m.id = f.deck_id
+    WHERE (m.deleted = 0 OR m.deleted IS NULL)
+    ORDER BY r.id ASC";
+
+pub const GET_FLASHCARD_REVIEWS_BY_DECK: &str = "
+    SELECT r.id, r.card_id, f.deck_id, r.rating, r.reviewed_at,
+           f.front, l.direction, l.target_expression
+    FROM flashcard_reviews r
+    JOIN flashcards f ON r.card_id = f.id
+    LEFT JOIN flashcard_language l ON l.card_id = f.id
+    JOIN review_materials m ON m.id = f.deck_id
+    WHERE f.deck_id = ?1
+      AND (m.deleted = 0 OR m.deleted IS NULL)
+    ORDER BY r.reviewed_at ASC, r.id ASC";
+
+pub const GET_ASSESSMENT_EVIDENCE_BY_ASSESSMENT: &str = "
+    SELECT a.id, a.session_id, s.assessment_id, q.concept, q.difficulty,
+           a.grade, a.misconception, a.created_at
+    FROM assessment_answers a
+    JOIN assessment_session_questions q ON a.question_id = q.id
+    JOIN assessment_sessions s ON a.session_id = s.id
+    JOIN review_materials m ON m.id = s.assessment_id
+    WHERE a.grade IS NOT NULL AND s.assessment_id = ?1
+      AND (m.deleted = 0 OR m.deleted IS NULL)
+    ORDER BY a.created_at ASC, a.id ASC";
+
+pub const GET_ALL_ASSESSMENT_EVIDENCE: &str = "
+    SELECT a.id, a.session_id, s.assessment_id, q.concept, q.difficulty,
+           a.grade, a.misconception, a.created_at
+    FROM assessment_answers a
+    JOIN assessment_session_questions q ON a.question_id = q.id
+    JOIN assessment_sessions s ON a.session_id = s.id
+    JOIN review_materials m ON m.id = s.assessment_id
+    WHERE a.grade IS NOT NULL
+      AND (m.deleted = 0 OR m.deleted IS NULL)
+    ORDER BY a.created_at ASC, a.id ASC";
+
+pub const GET_FLASHCARD_WITH_LANGUAGE: &str = "
+    SELECT f.front, l.direction, l.target_expression
+    FROM flashcards f
+    LEFT JOIN flashcard_language l ON l.card_id = f.id
+    WHERE f.id = ?1";
+
+pub const GET_REVIEW_MATERIAL_TYPE: &str = "
+    SELECT type FROM review_materials WHERE id = ?1";
+
+pub const GET_FLASHCARD_CONCEPT_LABEL: &str = "
+    SELECT CASE
+        WHEN l.target_expression IS NOT NULL AND TRIM(l.target_expression) <> ''
+        THEN TRIM(l.target_expression)
+        ELSE f.front
+    END
+    FROM flashcards f
+    LEFT JOIN flashcard_language l ON l.card_id = f.id
+    WHERE f.id = ?1";

@@ -1,5 +1,8 @@
+pub mod assessments;
+pub mod concept_mastery;
 pub mod connection;
 pub mod flashcard_decks;
+pub mod language_metadata;
 pub mod mnemonics;
 pub mod queries;
 pub mod review_materials;
@@ -8,9 +11,11 @@ pub mod study_materials;
 pub mod tags;
 pub mod tests;
 
-pub use connection::DbService;
+pub use assessments::AssessmentOperations;
 pub use connection::CardMnemonicOperations;
+pub use connection::DbService;
 pub use connection::FlashcardDeckOperations;
+pub use connection::FlashcardLanguageOperations;
 pub use connection::ReviewMaterialOperations;
 pub use connection::ReviewSessionOperations;
 pub use connection::StudyMaterialOperations;

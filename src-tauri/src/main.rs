@@ -61,6 +61,9 @@ async fn main() {
             commands::materials::review_material::update_last_review,
             // Flashcard Deck Commands
             commands::materials::review_material::create_flashcard_deck,
+            commands::materials::review_material::get_flashcard_language_for_deck,
+            commands::materials::review_material::get_flashcard_deck_language_learning,
+            commands::materials::review_material::update_flashcard_deck_language_learning,
             commands::materials::review_material::get_flashcards,
             commands::materials::review_material::get_flashcard_counts,
             commands::materials::review_material::get_flashcards_for_review,
@@ -87,6 +90,24 @@ async fn main() {
             commands::materials::review_material::update_test,
             commands::materials::review_material::delete_test,
             commands::materials::review_material::update_test_name,
+            // Assessment Commands (features 38-46)
+            commands::materials::assessment::generate_assessment_questions,
+            commands::materials::assessment::create_assessment,
+            commands::materials::assessment::get_assessment_questions,
+            commands::materials::assessment::start_assessment_session,
+            commands::materials::assessment::submit_assessment_answer,
+            commands::materials::assessment::get_assessment_answers,
+            commands::materials::assessment::complete_assessment_session,
+            commands::materials::assessment::get_assessment_report,
+            commands::materials::assessment::get_assessment_attempts,
+            commands::materials::assessment::reassess_assessment,
+            commands::materials::assessment::start_remediation,
+            commands::materials::assessment::delete_assessment,
+            // Concept Mastery Engine Commands
+            commands::materials::concept_mastery::get_concept_mastery,
+            commands::materials::concept_mastery::get_material_mastery,
+            commands::materials::concept_mastery::get_weak_concepts,
+            commands::materials::concept_mastery::recalculate_mastery,
             // Review Session Commands
             commands::materials::review_material::create_review_session,
             commands::materials::review_material::create_flashcard_review_session,
@@ -134,7 +155,9 @@ async fn main() {
             settings::reset_agent_settings_to_defaults,
             // LLM Manager Commands
             llm::generate_flashcards,
+            llm::generate_language_flashcards,
             llm::explain_flashcard,
+            llm::synthesize_pronunciation,
             llm::search_in_study_materials,
             llm::generate_test_questions,
             // Vector DB Commands

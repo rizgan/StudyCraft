@@ -84,8 +84,7 @@ impl ImageGenerationConfig {
         }
         if self.endpoint.trim().is_empty() {
             return Err(AppError::ApiError(
-                "Mnemonic image generation has no endpoint configured."
-                    .to_string(),
+                "Mnemonic image generation has no endpoint configured.".to_string(),
             ));
         }
         Ok(())

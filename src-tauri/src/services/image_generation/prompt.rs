@@ -14,7 +14,10 @@ use crate::materials::flashcard_mnemonic::LanguageMnemonic;
 ///
 /// `scene_prompt` is the LLM-generated illustration prompt; it must not be
 /// empty or the result falls back to a generic but safe prompt.
-pub fn build_image_prompt(scene_prompt: Option<&str>, language: Option<&LanguageMnemonic>) -> String {
+pub fn build_image_prompt(
+    scene_prompt: Option<&str>,
+    language: Option<&LanguageMnemonic>,
+) -> String {
     let scene = scene_prompt
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())

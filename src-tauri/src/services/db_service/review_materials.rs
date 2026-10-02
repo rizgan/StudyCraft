@@ -1,6 +1,7 @@
 use super::connection::DbService;
 use super::queries;
 use crate::errors::{AppError, AppResult};
+use crate::materials::language_learning::LanguageLearningSettings;
 use crate::materials::review_material;
 use crate::materials::review_material::ReviewMaterial;
 use rusqlite::{params, Row, Transaction};
@@ -14,6 +15,9 @@ struct ReviewMaterialRow {
     created_at: String,
     updated_at: String,
     deleted: bool,
+    is_language_learning: bool,
+    learning_language: Option<String>,
+    base_language: Option<String>,
 }
 
 impl ReviewMaterialRow {
@@ -26,6 +30,9 @@ impl ReviewMaterialRow {
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
             deleted: row.get("deleted")?,
+            is_language_learning: row.get("is_language_learning")?,
+            learning_language: row.get("learning_language")?,
+            base_language: row.get("base_language")?,
         })
     }
 
@@ -50,6 +57,15 @@ impl ReviewMaterialRow {
                 .map_err(|e| AppError::DbError(format!("Failed to parse updated_at: {}", e)))?
                 .and_utc();
 
+        let language_learning = if self.is_language_learning {
+            Some(LanguageLearningSettings {
+                learning_language: self.learning_language.unwrap_or_default(),
+                base_language: self.base_language.unwrap_or_default(),
+            })
+        } else {
+            None
+        };
+
         Ok(ReviewMaterial {
             id: self.id,
             display_name: self.name,
@@ -57,6 +73,7 @@ impl ReviewMaterialRow {
             last_review,
             created_at,
             updated_at,
+            language_learning,
         })
     }
 }
@@ -74,6 +91,11 @@ pub trait ReviewMaterialOperations {
     ) -> AppResult<()>;
     fn update_review_material_tx(&self, tx: &Transaction, id: &str) -> AppResult<()>;
     fn update_review_material_last_review(&mut self, id: &str) -> AppResult<()>;
+    fn update_review_material_language_learning(
+        &self,
+        id: &str,
+        settings: Option<&LanguageLearningSettings>,
+    ) -> AppResult<()>;
 }
 
 impl ReviewMaterialOperations for DbService {
@@ -82,13 +104,26 @@ impl ReviewMaterialOperations for DbService {
             .last_review
             .map(|lr| lr.format("%Y-%m-%d %H:%M:%S").to_string());
 
+        let (is_language_learning, learning_language, base_language) =
+            match &material.language_learning {
+                Some(settings) => (
+                    1i64,
+                    Some(settings.learning_language.clone()),
+                    Some(settings.base_language.clone()),
+                ),
+                None => (0i64, None, None),
+            };
+
         tx.execute(
             queries::INSERT_REVIEW_MATERIAL,
             params![
                 material.id,
                 material.display_name,
                 String::from(material.rm_type.clone()),
-                last_review_str
+                last_review_str,
+                is_language_learning,
+                learning_language,
+                base_language
             ],
         )
         .map_err(|e| AppError::DbError(format!("Failed to insert review material: {}", e)))?;
@@ -175,6 +210,41 @@ impl ReviewMaterialOperations for DbService {
             .map_err(|e| {
                 AppError::DbError(format!("Failed to update review material timestamp: {}", e))
             })?;
+
+        Ok(())
+    }
+
+    /// Persist (or clear) the language-learning identification of a review
+    /// material. `None` turns the mode off.
+    fn update_review_material_language_learning(
+        &self,
+        id: &str,
+        settings: Option<&LanguageLearningSettings>,
+    ) -> AppResult<()> {
+        let mut conn = self.conn.borrow_mut();
+        let tx = conn
+            .transaction()
+            .map_err(|e| AppError::DbError(format!("Failed to start transaction: {}", e)))?;
+
+        let (is_language_learning, learning_language, base_language) = match settings {
+            Some(settings) => (
+                1i64,
+                Some(settings.learning_language.clone()),
+                Some(settings.base_language.clone()),
+            ),
+            None => (0i64, None, None),
+        };
+
+        tx.execute(
+            queries::UPDATE_REVIEW_MATERIAL_LANGUAGE_LEARNING,
+            params![id, is_language_learning, learning_language, base_language],
+        )
+        .map_err(|e| {
+            AppError::DbError(format!("Failed to update language-learning mode: {}", e))
+        })?;
+
+        tx.commit()
+            .map_err(|e| AppError::DbError(format!("Failed to commit transaction: {}", e)))?;
 
         Ok(())
     }

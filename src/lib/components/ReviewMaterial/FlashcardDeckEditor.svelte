@@ -9,6 +9,7 @@
   import Button from '../Shared/Button.svelte';
   import FlashcardModal from './FlashcardModal.svelte';
   import MnemonicPanel from './MnemonicPanel.svelte';
+  import MasteryPanel from './MasteryPanel.svelte';
 
   // Logic & Types
   import { FlashcardDeckEditorLogic, type ReviewMaterial, type DeckEditFormData } from '../../logic/ReviewMaterial/flashcardDeckEditor';
@@ -16,6 +17,9 @@
 
   // Stores
   import { toastStore } from '../../stores/toastStore';
+
+  // Constants
+  import { LANGUAGE_OPTIONS } from '../../logic/Constants/creatorConstants';
 
   // Props
   export let deck: ReviewMaterial;
@@ -50,6 +54,12 @@
   // Language-pair mnemonic mode (target expression + meaning kept distinct).
   let languageMnemonicMode = false;
   let learnerProfile = '';
+
+  // Persistent language-learning identification of this deck.
+  let isLanguageLearning = false;
+  let learningLanguage = 'Arabic';
+  let baseLanguage = 'English';
+  let languageSettingsLoaded = false;
 
   // Reactive statements
   $: stepsComplete = {
@@ -151,6 +161,13 @@
     updateReactiveVars();
   }
 
+  async function handleSaveLanguageSettings() {
+    const settings = isLanguageLearning
+      ? { learning_language: learningLanguage, base_language: baseLanguage }
+      : null;
+    await logic.saveDeckLanguageLearning(deck.id, settings);
+  }
+
   async function handleSaveChanges() {
     // Prevent concurrent submissions
     if (isSubmitting || isSaving) return;
@@ -179,6 +196,7 @@
 
     try {
       await logic.saveChanges(formData);
+      await handleSaveLanguageSettings();
 
       toastStore.success('Deck updated successfully');
       onUpdated({
@@ -203,6 +221,17 @@
     if (deck && deck.id) {
       logic.currentStep = 2;
       await loadExistingCards();
+      try {
+        const settings = await logic.loadDeckLanguageLearning(deck.id);
+        if (settings) {
+          isLanguageLearning = true;
+          learningLanguage = settings.learning_language;
+          baseLanguage = settings.base_language;
+        }
+      } catch (err) {
+        console.error('Failed to load language-learning settings:', err);
+      }
+      languageSettingsLoaded = true;
     }
     updateReactiveVars();
   });
@@ -305,6 +334,42 @@
                 Language-pair mode (keep target expression, meaning &amp; pronunciation distinct)
               </label>
             </div>
+
+            <div class="fdc-form-field fdc-toggle-field">
+              <label class="fdc-toggle-label" for="language-learning-mode">
+                <input
+                  id="language-learning-mode"
+                  type="checkbox"
+                  bind:checked={isLanguageLearning}
+                  disabled={isSaving || !languageSettingsLoaded}
+                />
+                Language learning deck
+              </label>
+              {#if isLanguageLearning}
+                <div class="fdc-language-pair">
+                  <select
+                    bind:value={learningLanguage}
+                    class="fdc-language-select"
+                    disabled={isSaving}
+                    title="Learning language"
+                  >
+                    {#each LANGUAGE_OPTIONS as option}
+                      <option value={option.value}>{option.label}</option>
+                    {/each}
+                  </select>
+                  <select
+                    bind:value={baseLanguage}
+                    class="fdc-language-select"
+                    disabled={isSaving}
+                    title="Base (native) language"
+                  >
+                    {#each LANGUAGE_OPTIONS as option}
+                      <option value={option.value}>{option.label}</option>
+                    {/each}
+                  </select>
+                </div>
+              {/if}
+            </div>
           </div>
         </div>
 
@@ -371,6 +436,13 @@
             </div>
           {/each}
         </div>
+
+        {#if deck && deck.id}
+          <div class="fdc-mastery-section">
+            <h4>Concept Mastery</h4>
+            <MasteryPanel materialId={deck.id} />
+          </div>
+        {/if}
       </div>
     {:else if currentStep === 3}
       <div class="fdc-step-content" transition:fade>

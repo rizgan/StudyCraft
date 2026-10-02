@@ -32,13 +32,11 @@ impl MnemonicRow {
                 let meaning: Option<String> = row.get("language_meaning")?;
                 let transliteration: Option<String> = row.get("language_transliteration")?;
                 match (target, meaning, transliteration) {
-                    (Some(t), Some(m), Some(tr)) => {
-                        Some(LanguageMnemonic {
-                            target_expression: t,
-                            meaning: m,
-                            transliteration: tr,
-                        })
-                    }
+                    (Some(t), Some(m), Some(tr)) => Some(LanguageMnemonic {
+                        target_expression: t,
+                        meaning: m,
+                        transliteration: tr,
+                    }),
                     _ => None,
                 }
             },
@@ -131,7 +129,11 @@ impl CardMnemonicOperations for DbService {
         let id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let (lt, lm, ltr) = match &language {
-            Some(l) => (Some(l.target_expression.clone()), Some(l.meaning.clone()), Some(l.transliteration.clone())),
+            Some(l) => (
+                Some(l.target_expression.clone()),
+                Some(l.meaning.clone()),
+                Some(l.transliteration.clone()),
+            ),
             None => (None, None, None),
         };
 
@@ -178,7 +180,8 @@ impl CardMnemonicOperations for DbService {
             .query_map(params![card_id], MnemonicRow::from_row)
             .map_err(|e| AppError::DbError(format!("Failed to query mnemonic: {}", e)))?;
         for row in rows {
-            let row = row.map_err(|e| AppError::DbError(format!("Failed to read mnemonic row: {}", e)))?;
+            let row =
+                row.map_err(|e| AppError::DbError(format!("Failed to read mnemonic row: {}", e)))?;
             return Ok(Some(row.into_mnemonic()));
         }
         Ok(None)
@@ -194,7 +197,8 @@ impl CardMnemonicOperations for DbService {
             .map_err(|e| AppError::DbError(format!("Failed to query mnemonics: {}", e)))?;
         let mut result = Vec::new();
         for row in rows {
-            let row = row.map_err(|e| AppError::DbError(format!("Failed to read mnemonic row: {}", e)))?;
+            let row =
+                row.map_err(|e| AppError::DbError(format!("Failed to read mnemonic row: {}", e)))?;
             result.push(row.into_mnemonic());
         }
         Ok(result)
@@ -220,11 +224,8 @@ impl CardMnemonicOperations for DbService {
     fn delete_card_mnemonic(&self, card_id: i64) -> AppResult<Option<CardMnemonic>> {
         let existing = self.get_card_mnemonic(card_id)?;
         let conn = self.conn.borrow();
-        conn.execute(
-            queries::DELETE_CARD_MNEMONIC,
-            params![card_id],
-        )
-        .map_err(|e| AppError::DbError(format!("Failed to delete mnemonic: {}", e)))?;
+        conn.execute(queries::DELETE_CARD_MNEMONIC, params![card_id])
+            .map_err(|e| AppError::DbError(format!("Failed to delete mnemonic: {}", e)))?;
         Ok(existing)
     }
 }

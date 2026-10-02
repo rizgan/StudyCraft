@@ -75,11 +75,10 @@ impl OpenAiCompatibleImageProvider {
             .await
             .map_err(|e| AppError::ApiError(format!("Failed to parse image response: {}", e)))?;
 
-        let image = parsed
-            .data
-            .into_iter()
-            .next()
-            .ok_or_else(|| AppError::ApiError("Image provider returned no image".to_string()))?;
+        let image =
+            parsed.data.into_iter().next().ok_or_else(|| {
+                AppError::ApiError("Image provider returned no image".to_string())
+            })?;
 
         let bytes = if let Some(b64) = image.b64_json {
             STANDARD
@@ -110,8 +109,7 @@ impl OpenAiCompatibleImageProvider {
         };
 
         if let Some(parent) = output_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| AppError::IoError(e))?;
+            std::fs::create_dir_all(parent).map_err(|e| AppError::IoError(e))?;
         }
         std::fs::write(output_path, &bytes).map_err(|e| AppError::IoError(e))?;
 
@@ -120,7 +118,11 @@ impl OpenAiCompatibleImageProvider {
 }
 
 impl ImageGenerationProvider for OpenAiCompatibleImageProvider {
-    fn generate<'a>(&'a self, prompt: &'a str, output_path: &'a Path) -> PinnedBoxFuture<'a, AppResult<()>> {
+    fn generate<'a>(
+        &'a self,
+        prompt: &'a str,
+        output_path: &'a Path,
+    ) -> PinnedBoxFuture<'a, AppResult<()>> {
         let this = self.clone();
         Box::pin(async move { this.generate_inner(prompt, output_path).await })
     }

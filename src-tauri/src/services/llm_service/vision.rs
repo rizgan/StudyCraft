@@ -1,8 +1,8 @@
 use crate::config::api_config::LlmUserConfig;
 use crate::config::keystore::ApiKeystore;
 use crate::errors::{AppError, AppResult};
-use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use flyllm::ProviderType;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -72,12 +72,9 @@ pub async fn analyze_image(
             }
         })?;
 
-    let (provider, model_name, api_key, endpoint) = resolve_provider(
-        config,
-        provider_override,
-        model.as_deref(),
-    )
-    .map_err(|e| AppError::ApiError(e))?;
+    let (provider, model_name, api_key, endpoint) =
+        resolve_provider(config, provider_override, model.as_deref())
+            .map_err(|e| AppError::ApiError(e))?;
 
     let user_prompt = prompt.unwrap_or_else(|| VISION_PROMPT.to_string());
     let base64_image = STANDARD.encode(&image_bytes);
@@ -122,8 +119,15 @@ pub async fn analyze_image(
             .await
         }
         ProviderType::Ollama => {
-            call_ollama(client, &endpoint, &model_name, &user_prompt, &base64_image, &mime)
-                .await
+            call_ollama(
+                client,
+                &endpoint,
+                &model_name,
+                &user_prompt,
+                &base64_image,
+                &mime,
+            )
+            .await
         }
     }?;
 
@@ -141,15 +145,13 @@ fn resolve_provider(
         None => config
             .get_enabled_providers()
             .iter()
-            .filter_map(|s| {
-                match s.as_str() {
-                    "OpenAI" => Some(ProviderType::OpenAI),
-                    "Anthropic" => Some(ProviderType::Anthropic),
-                    "Mistral" => Some(ProviderType::Mistral),
-                    "Google" => Some(ProviderType::Google),
-                    "Ollama" => Some(ProviderType::Ollama),
-                    _ => None,
-                }
+            .filter_map(|s| match s.as_str() {
+                "OpenAI" => Some(ProviderType::OpenAI),
+                "Anthropic" => Some(ProviderType::Anthropic),
+                "Mistral" => Some(ProviderType::Mistral),
+                "Google" => Some(ProviderType::Google),
+                "Ollama" => Some(ProviderType::Ollama),
+                _ => None,
             })
             .collect(),
     };
@@ -175,12 +177,7 @@ fn resolve_provider(
 
         let model_name = model
             .map(|m| m.to_string())
-            .or_else(|| {
-                available
-                    .iter()
-                    .find(|m| is_vision_capable(m))
-                    .cloned()
-            })
+            .or_else(|| available.iter().find(|m| is_vision_capable(m)).cloned())
             .unwrap_or_else(|| default_vision_model(&provider).to_string());
 
         // Resolve the endpoint.
@@ -189,13 +186,11 @@ fn resolve_provider(
             ProviderType::Mistral => "https://api.mistral.ai/v1/chat/completions".to_string(),
             ProviderType::Anthropic => "https://api.anthropic.com/v1/messages".to_string(),
             ProviderType::Google => "https://generativelanguage.googleapis.com/v1beta".to_string(),
-            ProviderType::Ollama => {
-                config
-                    .get_ollama_endpoint()
-                    .ok()
-                    .flatten()
-                    .unwrap_or_else(|| "http://localhost:11434".to_string())
-            }
+            ProviderType::Ollama => config
+                .get_ollama_endpoint()
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "http://localhost:11434".to_string()),
         };
 
         // Ollama requires no API key; others do.
@@ -211,10 +206,7 @@ fn resolve_provider(
                 continue; // No key for this provider — try the next.
             }
             Err(e) => {
-                eprintln!(
-                    "Failed to read API key for {}: {}",
-                    provider_str, e
-                );
+                eprintln!("Failed to read API key for {}: {}", provider_str, e);
                 continue;
             }
         }
@@ -245,11 +237,7 @@ fn is_vision_capable(model: &str) -> bool {
 }
 
 fn mime_type_for_path(path: &str) -> String {
-    let ext = path
-        .rsplit('.')
-        .next()
-        .unwrap_or("")
-        .to_lowercase();
+    let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
     match ext.as_str() {
         "jpg" | "jpeg" => "image/jpeg".to_string(),
         "png" => "image/png".to_string(),

@@ -10,6 +10,7 @@ import Button from '../Shared/Button.svelte';
 
 // Logic
 import { FlashcardReviewLogic, type Card } from '../../logic/ReviewMaterial/flashcardReview';
+import type { FlashcardLanguage } from '../../logic/ReviewMaterial/flashcardDeckCreator';
 
 // Stores
 import { llmStore } from '../../stores/llmStore';
@@ -62,6 +63,40 @@ let progress = { current: 0, total: 0, percentage: 0 };
 let session = null;
 let isAnimating = false;
 let cardDirection = 0; // -1 for left, 1 for right, 0 for none
+let cardLanguage: Record<number, FlashcardLanguage> = {};
+let hearingPronunciation = false;
+
+/// Plays the target expression through the configured TTS provider (see
+/// `services/tts_service`). No TTS engine is bundled: when no provider is
+/// configured the invoke fails and a toast explains why.
+async function hearPronunciation(text: string) {
+  if (!text.trim() || hearingPronunciation) return;
+  hearingPronunciation = true;
+  try {
+    const audio = await invoke<{ data: number[]; content_type: string }>(
+      'synthesize_pronunciation',
+      { text }
+    );
+    const bytes = Uint8Array.from(audio.data);
+    const blob = new Blob([bytes], { type: audio.content_type || 'audio/mpeg' });
+    const url = URL.createObjectURL(blob);
+    const player = new Audio(url);
+    player
+      .play()
+      .catch(() => {
+        /* autoplay policy: nothing to fix in this hook */
+      })
+      .finally(() => {
+        player.onended = () => URL.revokeObjectURL(url);
+        player.onerror = () => URL.revokeObjectURL(url);
+      });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    toastStore.warning(`Pronunciation unavailable: ${message}`);
+  } finally {
+    hearingPronunciation = false;
+  }
+}
 let keyboardEnabled = true;
 let isSubmittingRating = false; // Lock to prevent concurrent rating submissions
 let confettiTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -104,6 +139,23 @@ async function loadCards() {
         deckId: deck.id,
         settings: reviewSettings
       });
+
+      // Load the per-card language metadata (may be empty; a card must work
+      // with no metadata).
+      cardLanguage = {};
+      try {
+        const languageRows: FlashcardLanguage[] = await invoke(
+          'get_flashcard_language_for_deck',
+          { deckId: deck.id },
+        );
+        for (const row of languageRows) {
+          if (typeof row.card_id === 'number') {
+            cardLanguage[row.card_id] = row;
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load flashcard language metadata:', err);
+      }
       
       if (loadedCards && loadedCards.length > 0) {
         loadedCards.forEach((card, index) => {
@@ -275,9 +327,15 @@ async function handleRating(difficulty: string) {
   try {
     reviewLogic.reviewCard(difficulty);
 
+    // A stable review-event id identifies this one review action so the whole
+    // operation (scheduling + evidence) is idempotent at the DB level. Each
+    // fresh review action gets a fresh id; a new legitimate review of the same
+    // card therefore still creates a new row.
+    const reviewEventId = crypto.randomUUID();
     const payload = {
       cardId: currentCard.id,
-      difficulty: difficulty
+      difficulty: difficulty,
+      reviewEventId: reviewEventId
     };
     const updatedCard = await invoke('update_flashcard_after_review', payload);
 
@@ -837,7 +895,7 @@ onDestroy(() => {
                 <!-- Front of Card (Question) -->
                 <div class="fr-card-face fr-card-front">
                   <div class="fr-card-content">
-                    <div class="fr-card-text" class:fr-long-text={currentCard.front.length > 100}>
+                    <div class="fr-card-text" dir="auto" class:fr-long-text={currentCard.front.length > 100}>
                       {currentCard.front}
                     </div>
                   </div>
@@ -850,7 +908,7 @@ onDestroy(() => {
                 <!-- Back of Card (Answer) -->
                 <div class="fr-card-face fr-card-back">
                   <div class="fr-card-content">
-                    <div class="fr-card-text fr-answer-text" class:fr-long-text={currentCard.back.length > 150}>
+                    <div class="fr-card-text fr-answer-text" dir="auto" class:fr-long-text={currentCard.back.length > 150}>
                       {currentCard.back}
                     </div>
                   </div>
@@ -862,6 +920,70 @@ onDestroy(() => {
               </div>
             </div>
             
+            <!-- Language Section (when the card has structured language data) -->
+            {#if showAnswer && typeof currentCard.id === 'number' && cardLanguage[currentCard.id]}
+              {@const lang = cardLanguage[currentCard.id]}
+              {@const item = lang.item}
+              <div class="fr-language-panel" in:fade={{ duration: 300 }}>
+                <div class="fr-language-header">
+                  <span>Vocabulary</span>
+                  {#if lang.direction}
+                    <span class="fr-language-tag">{lang.direction}</span>
+                  {/if}
+                  {#if lang.task}
+                    <span class="fr-language-tag">{lang.task}</span>
+                  {/if}
+                  <button
+                    class="fr-hear-btn"
+                    on:click={() => hearPronunciation(item.target_expression)}
+                    disabled={hearingPronunciation}
+                    title="Play pronunciation">
+                    {hearingPronunciation ? '…' : '🔊'}
+                  </button>
+                </div>
+                <div class="fr-language-content">
+                  <div class="fr-language-row">
+                    <span class="fr-language-label">Target</span>
+                    <span class="fr-language-value" dir="auto">{item.target_expression}</span>
+                  </div>
+                  <div class="fr-language-row">
+                    <span class="fr-language-label">Meaning</span>
+                    <span class="fr-language-value" dir="auto">{item.meaning}</span>
+                  </div>
+                  {#if item.pronunciation}
+                    <div class="fr-language-row">
+                      <span class="fr-language-label">Pronunciation</span>
+                      <span class="fr-language-value" dir="auto">{item.pronunciation}</span>
+                    </div>
+                  {/if}
+                  {#if item.example}
+                    <div class="fr-language-row">
+                      <span class="fr-language-label">Example</span>
+                      <span class="fr-language-value" dir="auto">{item.example}</span>
+                    </div>
+                  {/if}
+                  {#if item.example_translation}
+                    <div class="fr-language-row">
+                      <span class="fr-language-label">Example translation</span>
+                      <span class="fr-language-value">{item.example_translation}</span>
+                    </div>
+                  {/if}
+                  {#if item.context}
+                    <div class="fr-language-row">
+                      <span class="fr-language-label">Context</span>
+                      <span class="fr-language-value">{item.context}</span>
+                    </div>
+                  {/if}
+                  {#if item.grammatical_information}
+                    <div class="fr-language-row">
+                      <span class="fr-language-label">Grammar</span>
+                      <span class="fr-language-value">{item.grammatical_information}</span>
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            {/if}
+
             <!-- Explanation Section (when available) -->
             {#if explanation && showAnswer}
               <div class="fr-explanation-panel" in:fade={{ duration: 300 }}>
@@ -896,15 +1018,15 @@ onDestroy(() => {
                     <div class="fr-mnemonic-language">
                       <div class="fr-mnemonic-lang-row">
                         <span class="fr-mnemonic-lang-label">Target</span>
-                        <span class="fr-mnemonic-lang-value">{currentMnemonic.language.target_expression}</span>
+                        <span class="fr-mnemonic-lang-value" dir="auto">{currentMnemonic.language.target_expression}</span>
                       </div>
                       <div class="fr-mnemonic-lang-row">
                         <span class="fr-mnemonic-lang-label">Meaning</span>
-                        <span class="fr-mnemonic-lang-value">{currentMnemonic.language.meaning}</span>
+                        <span class="fr-mnemonic-lang-value" dir="auto">{currentMnemonic.language.meaning}</span>
                       </div>
                       <div class="fr-mnemonic-lang-row">
                         <span class="fr-mnemonic-lang-label">Pronunciation</span>
-                        <span class="fr-mnemonic-lang-value">{currentMnemonic.language.transliteration}</span>
+                        <span class="fr-mnemonic-lang-value" dir="auto">{currentMnemonic.language.transliteration}</span>
                       </div>
                     </div>
                   {/if}
@@ -1645,6 +1767,91 @@ onDestroy(() => {
   .fr-mnemonic-lang-value {
     font-size: 0.9rem;
     color: var(--text);
+    unicode-bidi: plaintext;
+  }
+
+  .fr-language-panel {
+    flex: 0 0 auto;
+    background: color-mix(in srgb, var(--accent) 5%, var(--background));
+    border-radius: var(--border-radius);
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+    overflow: hidden;
+  }
+
+  .fr-language-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-md) var(--space-lg);
+    background: color-mix(in srgb, var(--accent) 10%, var(--background));
+    border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  .fr-language-tag {
+    font-size: 0.7rem;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: color-mix(in srgb, currentColor 15%, transparent);
+    color: var(--text-secondary);
+  }
+
+  .fr-hear-btn {
+    margin-left: auto;
+    font-size: 0.85rem;
+    line-height: 1;
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .fr-hear-btn:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .fr-hear-btn:disabled {
+    opacity: 0.5;
+    cursor: wait;
+  }
+
+  .fr-language-content {
+    padding: var(--space-md) var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    max-height: 240px;
+    overflow-y: auto;
+  }
+
+  .fr-language-row {
+    display: flex;
+    gap: var(--space-md);
+    align-items: baseline;
+  }
+
+  .fr-language-label {
+    flex: 0 0 auto;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    min-width: 7rem;
+  }
+
+  .fr-language-value {
+    flex: 1;
+    color: var(--text);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    word-break: break-word;
     unicode-bidi: plaintext;
   }
 

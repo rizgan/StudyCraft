@@ -47,6 +47,10 @@
     tags: [],
     selectedMaterials: [...initialSelectedMaterials],
     concept: "",
+    is_language_learning: false,
+    learning_language: "Arabic",
+    base_language: "English",
+    card_direction: "both",
   };
 
   // State
@@ -462,6 +466,60 @@
                   <option value={option.value}>{option.label}</option>
                 {/each}
               </select>
+            </div>
+
+            <div class="fdc-form-field fdc-language-mode-field">
+              <label class="fdc-language-mode-label">
+                <input
+                  type="checkbox"
+                  bind:checked={formData.is_language_learning}
+                  disabled={isGenerating}
+                />
+                <span>Language learning mode</span>
+              </label>
+              {#if formData.is_language_learning}
+                <div class="fdc-language-pair">
+                  <div class="fdc-form-field">
+                    <label for="learning-language">Learning language</label>
+                    <select
+                      id="learning-language"
+                      bind:value={formData.learning_language}
+                      class="fdc-language-select"
+                      disabled={isGenerating}
+                    >
+                      {#each LANGUAGE_OPTIONS as option}
+                        <option value={option.value}>{option.label}</option>
+                      {/each}
+                    </select>
+                  </div>
+                  <div class="fdc-form-field">
+                    <label for="base-language">Base (native) language</label>
+                    <select
+                      id="base-language"
+                      bind:value={formData.base_language}
+                      class="fdc-language-select"
+                      disabled={isGenerating}
+                    >
+                      {#each LANGUAGE_OPTIONS as option}
+                        <option value={option.value}>{option.label}</option>
+                      {/each}
+                    </select>
+                  </div>
+                  <div class="fdc-form-field">
+                    <label for="card-direction">Card direction</label>
+                    <select
+                      id="card-direction"
+                      bind:value={formData.card_direction}
+                      class="fdc-language-select"
+                      disabled={isGenerating}
+                    >
+                      <option value="both">Both (recognition and production)</option>
+                      <option value="recognition">Recognition (target → meaning)</option>
+                      <option value="production">Production (meaning → target)</option>
+                    </select>
+                  </div>
+                </div>
+              {/if}
             </div>
           </div>
         </div>

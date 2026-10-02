@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 pub enum AgentType {
     ConceptExtractor,
     FlashcardContentCreator,
+    LanguageFlashcardContentCreator,
     TestContentCreator,
+    AssessmentContentCreator,
+    AssessmentAnswerEvaluator,
     ExplanationAgent,
     SearchAgent,
     MnemonicGenerator,
@@ -17,7 +20,10 @@ impl AgentType {
         vec![
             Self::ConceptExtractor,
             Self::FlashcardContentCreator,
+            Self::LanguageFlashcardContentCreator,
             Self::TestContentCreator,
+            Self::AssessmentContentCreator,
+            Self::AssessmentAnswerEvaluator,
             Self::ExplanationAgent,
             Self::SearchAgent,
             Self::MnemonicGenerator,
@@ -28,7 +34,10 @@ impl AgentType {
         match self {
             Self::ConceptExtractor => "ConceptExtractor",
             Self::FlashcardContentCreator => "FlashcardContentCreator",
+            Self::LanguageFlashcardContentCreator => "LanguageFlashcardContentCreator",
             Self::TestContentCreator => "TestContentCreator",
+            Self::AssessmentContentCreator => "AssessmentContentCreator",
+            Self::AssessmentAnswerEvaluator => "AssessmentAnswerEvaluator",
             Self::ExplanationAgent => "ExplanationAgent",
             Self::SearchAgent => "SearchAgent",
             Self::MnemonicGenerator => "MnemonicGenerator",
@@ -45,9 +54,23 @@ impl AgentType {
                 .with_max_tokens(3500)
                 .with_temperature(0.25),
 
+            Self::LanguageFlashcardContentCreator => {
+                TaskDefinition::new("Language Flashcard Content Creation")
+                    .with_max_tokens(4000)
+                    .with_temperature(0.25)
+            }
+
             Self::TestContentCreator => TaskDefinition::new("Test Content Creation")
                 .with_max_tokens(4000)
                 .with_temperature(0.25),
+
+            Self::AssessmentContentCreator => TaskDefinition::new("Assessment Content Creation")
+                .with_max_tokens(4000)
+                .with_temperature(0.3),
+
+            Self::AssessmentAnswerEvaluator => TaskDefinition::new("Assessment Answer Evaluation")
+                .with_max_tokens(1024)
+                .with_temperature(0.1),
 
             Self::ExplanationAgent => TaskDefinition::new("Answer Explanation")
                 .with_max_tokens(1500)
@@ -67,7 +90,12 @@ impl AgentType {
         match self {
             Self::ConceptExtractor => constants::CONCEPT_EXTRACTOR_PROMPT,
             Self::FlashcardContentCreator => constants::FLASHCARD_CONTENT_CREATOR_PROMPT,
+            Self::LanguageFlashcardContentCreator => {
+                constants::LANGUAGE_FLASHCARD_CONTENT_CREATOR_PROMPT
+            }
             Self::TestContentCreator => constants::TEST_CONTENT_CREATOR_PROMPT,
+            Self::AssessmentContentCreator => constants::ASSESSMENT_CONTENT_CREATOR_PROMPT,
+            Self::AssessmentAnswerEvaluator => constants::ASSESSMENT_ANSWER_EVALUATOR_PROMPT,
             Self::ExplanationAgent => constants::EXPLANATION_AGENT_PROMPT,
             Self::SearchAgent => constants::SEARCH_AGENT_PROMPT,
             Self::MnemonicGenerator => constants::MNEMONIC_GENERATOR_PROMPT,
@@ -80,7 +108,10 @@ impl From<String> for AgentType {
         match s.as_str() {
             "ConceptExtractor" => Self::ConceptExtractor,
             "FlashcardContentCreator" => Self::FlashcardContentCreator,
+            "LanguageFlashcardContentCreator" => Self::LanguageFlashcardContentCreator,
             "TestContentCreator" => Self::TestContentCreator,
+            "AssessmentContentCreator" => Self::AssessmentContentCreator,
+            "AssessmentAnswerEvaluator" => Self::AssessmentAnswerEvaluator,
             "ExplanationAgent" => Self::ExplanationAgent,
             "SearchAgent" => Self::SearchAgent,
             "MnemonicGenerator" => Self::MnemonicGenerator,

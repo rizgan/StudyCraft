@@ -141,11 +141,8 @@ fn build_collection_db(flashcards: &[Flashcard], deck_name: &str) -> Result<Vec<
     let now = now_secs();
 
     // Build the database in a temporary file (rusqlite has no in-memory-to-bytes API).
-    let temp_path = std::env::temp_dir().join(format!(
-        "studycraft_apkg_{}_{}.db",
-        std::process::id(),
-        now
-    ));
+    let temp_path =
+        std::env::temp_dir().join(format!("studycraft_apkg_{}_{}.db", std::process::id(), now));
 
     {
         let conn = Connection::open(&temp_path)
@@ -211,11 +208,12 @@ fn build_collection_db(flashcards: &[Flashcard], deck_name: &str) -> Result<Vec<
         )
         .map_err(|e| format!("Failed to insert schema row: {}", e))?;
 
-        conn.close().map_err(|(_, e)| format!("Failed to close Anki database: {}", e))?;
+        conn.close()
+            .map_err(|(_, e)| format!("Failed to close Anki database: {}", e))?;
     }
 
-    let db_bytes = std::fs::read(&temp_path)
-        .map_err(|e| format!("Failed to read Anki database: {}", e))?;
+    let db_bytes =
+        std::fs::read(&temp_path).map_err(|e| format!("Failed to read Anki database: {}", e))?;
     let _ = std::fs::remove_file(&temp_path);
 
     Ok(db_bytes)

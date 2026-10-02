@@ -1,5 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { StudyMaterial, GeneratedCard } from './flashcardDeckCreator';
+import type {
+  StudyMaterial,
+  GeneratedCard,
+  LanguageLearningSettings,
+} from './flashcardDeckCreator';
 
 export interface ReviewMaterial {
   id: string;
@@ -427,6 +431,22 @@ export class FlashcardDeckEditorLogic {
 
   setOriginalDeckName(name: string): void {
     this.originalDeckName = name;
+  }
+
+  async loadDeckLanguageLearning(deckId: string): Promise<LanguageLearningSettings | null> {
+    return invoke('get_flashcard_deck_language_learning', {
+      deckId: deckId,
+    }) as LanguageLearningSettings | null;
+  }
+
+  async saveDeckLanguageLearning(
+    deckId: string,
+    settings: LanguageLearningSettings | null,
+  ): Promise<void> {
+    await invoke('update_flashcard_deck_language_learning', {
+      deckId: deckId,
+      languageLearning: settings,
+    });
   }
 
   reset(): void {

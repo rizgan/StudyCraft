@@ -17,12 +17,10 @@ use crate::config::app_settings::AgentSettings;
 use crate::config::keystore::ApiKeystore;
 use crate::config::paths::APP_PATHS;
 use crate::errors::{AppError, AppResult};
-use crate::materials::flashcard_mnemonic::{
-    read_mnemonic_image, CardMnemonic, LanguageMnemonic,
-};
-use crate::services::llm_service::manager::MnemonicGenerationOutput;
+use crate::materials::flashcard_mnemonic::{read_mnemonic_image, CardMnemonic, LanguageMnemonic};
 use crate::services::db_service::{CardMnemonicOperations, FlashcardDeckOperations};
 use crate::services::image_generation::{build_provider, prompt::build_image_prompt};
+use crate::services::llm_service::manager::MnemonicGenerationOutput;
 use crate::state::AppState;
 use std::fs;
 use std::path::PathBuf;
@@ -87,7 +85,13 @@ pub async fn generate_card_mnemonic_cmd2(
     let agent_settings = state.agent_settings.lock().await;
 
     let out: MnemonicGenerationOutput = llm
-        .generate_card_mnemonic(&fact, &kind, &language_mode, learner_profile.as_deref(), &agent_settings)
+        .generate_card_mnemonic(
+            &fact,
+            &kind,
+            &language_mode,
+            learner_profile.as_deref(),
+            &agent_settings,
+        )
         .await?;
     let is_suitable = out.is_suitable;
     let reason = out.reason.clone();
@@ -103,21 +107,9 @@ pub async fn generate_card_mnemonic_cmd2(
         card_id,
         is_suitable,
         reason,
-        if is_suitable {
-            mnemonic
-        } else {
-            String::new()
-        },
-        if is_suitable {
-            language
-        } else {
-            None
-        },
-        if is_suitable {
-            image_prompt
-        } else {
-            None
-        },
+        if is_suitable { mnemonic } else { String::new() },
+        if is_suitable { language } else { None },
+        if is_suitable { image_prompt } else { None },
         image_path,
     )?;
 
@@ -130,16 +122,16 @@ pub async fn generate_card_mnemonic_cmd2(
 /// Opt-in: fails with a clear capability/configuration error when image
 /// generation is disabled or unconfigured (no mock provider exists).
 #[tauri::command]
-pub async fn generate_card_mnemonic_image_cmd2(state: State<'_, AppState>, card_id: i64) -> AppResult<CardMnemonicResponse> {
+pub async fn generate_card_mnemonic_image_cmd2(
+    state: State<'_, AppState>,
+    card_id: i64,
+) -> AppResult<CardMnemonicResponse> {
     let db = state.db.lock().await;
-    let mnemonic = db
-        .get_card_mnemonic(card_id)?
-        .ok_or_else(|| {
-            AppError::InvalidInput(
-                "No mnemonic exists for this card yet. Generate the text mnemonic first."
-                    .to_string(),
-            )
-        })?;
+    let mnemonic = db.get_card_mnemonic(card_id)?.ok_or_else(|| {
+        AppError::InvalidInput(
+            "No mnemonic exists for this card yet. Generate the text mnemonic first.".to_string(),
+        )
+    })?;
 
     if !mnemonic.is_suitable {
         return Err(AppError::InvalidInput(
@@ -162,10 +154,13 @@ pub async fn generate_card_mnemonic_image_cmd2(state: State<'_, AppState>, card_
     let provider = build_provider(&image_config, &keystore)?;
 
     // Write the new image to a fresh temp path BEFORE touching the DB.
-    let temp_path = APP_PATHS
+    let temp_path =
+        APP_PATHS
+            .mnemonic_images_dir
+            .join(format!("{}_{}.png", card_id, Uuid::new_v4()));
+    let final_path = APP_PATHS
         .mnemonic_images_dir
-        .join(format!("{}_{}.png", card_id, Uuid::new_v4()));
-    let final_path = APP_PATHS.mnemonic_images_dir.join(format!("{}.png", card_id));
+        .join(format!("{}.png", card_id));
 
     let prompt = build_image_prompt(scene_prompt.as_deref(), language.as_ref());
     // The trait returns a Pin<Box<dyn Future + Send>>, which `.await`
@@ -173,11 +168,12 @@ pub async fn generate_card_mnemonic_image_cmd2(state: State<'_, AppState>, card_
     provider.generate(&prompt, &temp_path).await?;
 
     // Validate the file is non-empty before committing anything.
-    let meta = fs::metadata(&temp_path)
-        .map_err(|e| AppError::IoError(e))?;
+    let meta = fs::metadata(&temp_path).map_err(|e| AppError::IoError(e))?;
     if meta.len() == 0 {
         let _ = fs::remove_file(&temp_path);
-        return Err(AppError::ApiError("Image provider produced an empty file".to_string()));
+        return Err(AppError::ApiError(
+            "Image provider produced an empty file".to_string(),
+        ));
     }
 
     // Promote temp -> final path (replaces any old final file).
@@ -246,7 +242,10 @@ pub async fn delete_card_mnemonic_cmd2(state: State<'_, AppState>, card_id: i64)
 
 /// Remove the image file attached to a card's mnemonic (keeps the text).
 #[tauri::command]
-pub async fn delete_card_mnemonic_image_cmd2(state: State<'_, AppState>, card_id: i64) -> AppResult<()> {
+pub async fn delete_card_mnemonic_image_cmd2(
+    state: State<'_, AppState>,
+    card_id: i64,
+) -> AppResult<()> {
     let db = state.db.lock().await;
     let m = db.get_card_mnemonic(card_id)?;
     drop(db);
@@ -263,13 +262,15 @@ pub async fn delete_card_mnemonic_image_cmd2(state: State<'_, AppState>, card_id
 
 /// Serve the raw bytes of a mnemonic image (mirrors `get_cover_image_raw`).
 #[tauri::command]
-pub async fn get_mnemonic_image_raw_cmd2(state: State<'_, AppState>, card_id: i64) -> AppResult<Vec<u8>> {
+pub async fn get_mnemonic_image_raw_cmd2(
+    state: State<'_, AppState>,
+    card_id: i64,
+) -> AppResult<Vec<u8>> {
     let db = state.db.lock().await;
     let m = db.get_card_mnemonic(card_id)?;
     drop(db);
 
-    let m = m
-        .ok_or_else(|| AppError::NotFound(format!("No mnemonic for card {}", card_id)))?;
+    let m = m.ok_or_else(|| AppError::NotFound(format!("No mnemonic for card {}", card_id)))?;
     let path = m
         .image_path
         .ok_or_else(|| AppError::NotFound(format!("No image for mnemonic of card {}", card_id)))?;
@@ -279,7 +280,9 @@ pub async fn get_mnemonic_image_raw_cmd2(state: State<'_, AppState>, card_id: i6
 /// Expose the current image-generation availability to the UI (feature 35):
 /// the button is enabled only when `available` is true.
 #[tauri::command]
-pub async fn get_image_generation_status_cmd2(state: State<'_, AppState>) -> AppResult<ImageGenerationStatus> {
+pub async fn get_image_generation_status_cmd2(
+    state: State<'_, AppState>,
+) -> AppResult<ImageGenerationStatus> {
     let agent_settings = state.agent_settings.lock().await;
     let config = agent_settings.image_generation.clone();
     drop(agent_settings);

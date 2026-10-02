@@ -190,21 +190,21 @@
     {#if expanded}
       <div class="mnemonic-body" transition:fade={{ duration: 150 }}>
         {#if mnemonic && mnemonic.is_suitable}
-          <div class="mnemonic-text">{mnemonic.mnemonic_text}</div>
+          <div class="mnemonic-text" dir="auto">{mnemonic.mnemonic_text}</div>
 
           {#if mnemonic.language}
             <div class="mnemonic-language">
               <div class="mnemonic-lang-row">
                 <span class="mnemonic-lang-label">Target</span>
-                <span class="mnemonic-lang-value">{mnemonic.language.target_expression}</span>
+                <span class="mnemonic-lang-value" dir="auto">{mnemonic.language.target_expression}</span>
               </div>
               <div class="mnemonic-lang-row">
                 <span class="mnemonic-lang-label">Meaning</span>
-                <span class="mnemonic-lang-value">{mnemonic.language.meaning}</span>
+                <span class="mnemonic-lang-value" dir="auto">{mnemonic.language.meaning}</span>
               </div>
               <div class="mnemonic-lang-row">
                 <span class="mnemonic-lang-label">Pronunciation</span>
-                <span class="mnemonic-lang-value">{mnemonic.language.transliteration}</span>
+                <span class="mnemonic-lang-value" dir="auto">{mnemonic.language.transliteration}</span>
               </div>
             </div>
           {/if}

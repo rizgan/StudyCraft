@@ -7,10 +7,7 @@ use tauri_plugin_shell::ShellExt;
 /// Detect whether a PDF has pages lacking a text layer (i.e. it is scanned).
 /// Uses a dedicated sidecar mode so the heavy OCR step only runs when needed.
 async fn pdf_needs_ocr(file_path: &Path, app: AppHandle) -> Result<bool, String> {
-    let path_arg = file_path
-        .to_str()
-        .ok_or("Invalid file path")?
-        .to_string();
+    let path_arg = file_path.to_str().ok_or("Invalid file path")?.to_string();
 
     let output = app
         .shell()
@@ -38,10 +35,7 @@ async fn pdf_needs_ocr(file_path: &Path, app: AppHandle) -> Result<bool, String>
 pub async fn convert_file_to_markdown(file_path: &Path, app: AppHandle) -> Result<String, String> {
     // For PDFs, detect whether OCR fallback is required for scanned pages and
     // enable it automatically so the RAG pipeline still gets usable text.
-    let mut args: Vec<String> = vec![file_path
-        .to_str()
-        .ok_or("Invalid file path")?
-        .to_string()];
+    let mut args: Vec<String> = vec![file_path.to_str().ok_or("Invalid file path")?.to_string()];
     if file_path
         .extension()
         .and_then(|e| e.to_str())

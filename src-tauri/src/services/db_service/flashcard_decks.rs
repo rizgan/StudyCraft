@@ -1,9 +1,11 @@
 use super::connection::DbService;
+use super::language_metadata::FlashcardLanguageOperations;
 use super::queries;
 use super::review_materials::ReviewMaterialOperations;
 use crate::commands::structure::requests;
 use crate::errors::{AppError, AppResult};
 use crate::materials::flashcard::{CardStatus, Flashcard, FlashcardCounts, NewFlashcard};
+use crate::materials::language_learning::{FlashcardLanguage, LanguageLearningSettings};
 use crate::materials::review_material::{
     FlashcardDeckReviewSettings, ReviewMaterial, ReviewMaterialType,
 };
@@ -103,6 +105,8 @@ pub trait FlashcardDeckOperations {
         name: &str,
         tags: &[String],
         cards: &[NewFlashcard],
+        language_learning: Option<&LanguageLearningSettings>,
+        card_language: &[Option<FlashcardLanguage>],
     ) -> AppResult<ReviewMaterial>;
     fn get_flashcard_decks(&self) -> AppResult<Vec<ReviewMaterial>>;
     fn get_flashcard_deck(&self, id: &str) -> AppResult<Option<ReviewMaterial>>;
@@ -114,8 +118,17 @@ pub trait FlashcardDeckOperations {
     ) -> AppResult<Vec<Flashcard>>;
     fn get_flashcard_counts(&self, deck_id: &str) -> AppResult<FlashcardCounts>;
     fn get_content_from_random_flashcard_deck(&self, nitems: u32) -> AppResult<Vec<Flashcard>>;
-    fn update_flashcard_after_review(&self, card_id: i64, difficulty: &str)
-        -> AppResult<Flashcard>;
+    /// Applies one flashcard review (SM-2 scheduling update) and records the
+    /// raw per-review evidence in the same transaction. `review_event_id` is
+    /// the stable identity of this review action, supplied by the caller so
+    /// the whole operation is idempotent: a retry with the same event id is
+    /// a no-op, while a fresh event id always records a new review.
+    fn update_flashcard_after_review(
+        &self,
+        card_id: i64,
+        difficulty: &str,
+        review_event_id: &str,
+    ) -> AppResult<Flashcard>;
     fn delete_flashcard_deck(&self, id: &str) -> AppResult<()>;
     fn update_flashcard_deck_name(&self, id: &str, name: &str) -> AppResult<()>;
     /// Fetch a single flashcard by its id (across all decks).
@@ -131,6 +144,8 @@ impl FlashcardDeckOperations for DbService {
         name: &str,
         tags: &[String],
         cards: &[NewFlashcard],
+        language_learning: Option<&LanguageLearningSettings>,
+        card_language: &[Option<FlashcardLanguage>],
     ) -> AppResult<ReviewMaterial> {
         let mut conn = self.conn.borrow_mut();
         let tx = conn
@@ -146,6 +161,7 @@ impl FlashcardDeckOperations for DbService {
             last_review: None,
             created_at: now,
             updated_at: now,
+            language_learning: language_learning.cloned(),
         };
 
         self.add_review_material_tx(&tx, &review_material)?;
@@ -181,6 +197,15 @@ impl FlashcardDeckOperations for DbService {
                 ],
             )
             .map_err(|e| AppError::DbError(format!("Failed to insert flashcard: {}", e)))?;
+
+            // Attach the card's language metadata (1:1 with the flashcard).
+            // `card_language` is index-aligned with `cards`; cards without
+            // language metadata carry None.
+            if let Some(Some(metadata)) = card_language.get(i) {
+                let mut metadata = metadata.clone();
+                metadata.card_id = tx.last_insert_rowid();
+                self.insert_flashcard_language_tx(&tx, &metadata)?;
+            }
         }
 
         tx.commit()
@@ -320,6 +345,7 @@ impl FlashcardDeckOperations for DbService {
         &self,
         card_id: i64,
         difficulty: &str,
+        review_event_id: &str,
     ) -> AppResult<Flashcard> {
         let mut conn = self.conn.borrow_mut();
         let tx = conn
@@ -332,6 +358,25 @@ impl FlashcardDeckOperations for DbService {
             })
             .map_err(|e| AppError::DbError(format!("Failed to get flashcard: {}", e)))?
             .into_flashcard()?;
+
+        // DB-level idempotency for the whole review operation (scheduling +
+        // evidence), not just the INSERT. If this review event was already
+        // recorded, the operation was already applied end-to-end: return the
+        // card's current (already-updated) state without re-applying the SM-2
+        // update. A new legitimate review of the same card always carries a
+        // fresh event id, so it is never skipped here.
+        let already_recorded: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM flashcard_reviews WHERE review_event_id = ?1",
+                params![review_event_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| AppError::DbError(format!("Failed to check review event: {}", e)))?;
+        if already_recorded > 0 {
+            tx.commit()
+                .map_err(|e| AppError::DbError(format!("Failed to commit transaction: {}", e)))?;
+            return Ok(card);
+        }
 
         let updated_card = card.calculate_next_review(difficulty);
 
@@ -364,6 +409,48 @@ impl FlashcardDeckOperations for DbService {
             ],
         )
         .map_err(|e| AppError::DbError(format!("Failed to update flashcard scheduling: {}", e)))?;
+
+        // Record the raw per-review flashcard observation for the
+        // concept-mastery engine. This is the raw evidence of record for
+        // flashcard mastery: it is appended here, in the same transaction as
+        // the scheduling update, and is never rewritten. The card's concept
+        // is its language target expression when present, otherwise its front
+        // text; the normalized identity is registered in the concept registry
+        // in the same transaction so evidence and registry stay consistent.
+        let concept_label: String = tx
+            .query_row(
+                queries::GET_FLASHCARD_CONCEPT_LABEL,
+                params![card_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| {
+                AppError::DbError(format!("Failed to load flashcard concept label: {}", e))
+            })?;
+        tx.execute(
+            queries::INSERT_FLASHCARD_REVIEW,
+            params![card_id, difficulty, updated_at_str, review_event_id],
+        )
+        .map_err(|e| AppError::DbError(format!("Failed to record flashcard review: {}", e)))?;
+        if let Some(concept_id) =
+            crate::materials::concept_mastery::concept_id_for_label(&concept_label)
+        {
+            tx.execute(
+                "INSERT OR IGNORE INTO concepts (id, label) VALUES (?1, ?1)",
+                params![concept_id],
+            )
+            .map_err(|e| AppError::DbError(format!("Failed to register concept: {}", e)))?;
+            // Record the material provenance of this concept occurrence so a
+            // shared label can be traced back to every material that produced
+            // it (false separation is preferred over false merging).
+            tx.execute(
+                "INSERT OR IGNORE INTO concept_material_occurrences \
+                 (concept_id, material_id) VALUES (?1, ?2)",
+                params![concept_id, card.deck_id],
+            )
+            .map_err(|e| {
+                AppError::DbError(format!("Failed to record concept provenance: {}", e))
+            })?;
+        }
 
         tx.commit()
             .map_err(|e| AppError::DbError(format!("Failed to commit transaction: {}", e)))?;
@@ -408,7 +495,8 @@ impl FlashcardDeckOperations for DbService {
             .query_map(rusqlite::params![card_id], FlashcardRow::from_row)
             .map_err(|e| AppError::DbError(format!("Failed to query flashcard: {}", e)))?;
         for row in rows {
-            let row = row.map_err(|e| AppError::DbError(format!("Failed to read flashcard row: {}", e)))?;
+            let row =
+                row.map_err(|e| AppError::DbError(format!("Failed to read flashcard row: {}", e)))?;
             return Ok(Some(row.into_flashcard()?));
         }
         Ok(None)

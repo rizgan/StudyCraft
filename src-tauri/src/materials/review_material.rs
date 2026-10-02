@@ -1,5 +1,6 @@
 use crate::constants;
 use crate::materials::flashcard::{Flashcard, NewFlashcard};
+use crate::materials::language_learning::LanguageLearningSettings;
 use crate::materials::test::{NewTestQuestion, TestQuestionWithAnswers};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,11 @@ pub struct ReviewMaterial {
     pub last_review: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Some when this material is identified as language-learning content
+    /// (currently flashcard decks). None for general materials. Persisted
+    /// with the material so the mode survives save/restart/reopen/edit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language_learning: Option<LanguageLearningSettings>,
 }
 
 /// Types of review materials
@@ -23,6 +29,8 @@ pub enum ReviewMaterialType {
     FlashcardDeck,
     #[serde(rename = "test")]
     Test,
+    #[serde(rename = "assessment")]
+    Assessment,
 }
 
 /// Review settings for flashcard sessions
@@ -62,6 +70,7 @@ impl From<String> for ReviewMaterialType {
         match s.as_str() {
             "flashcard_deck" => ReviewMaterialType::FlashcardDeck,
             "test" => ReviewMaterialType::Test,
+            "assessment" => ReviewMaterialType::Assessment,
             _ => ReviewMaterialType::FlashcardDeck,
         }
     }
@@ -72,6 +81,7 @@ impl From<ReviewMaterialType> for String {
         match material_type {
             ReviewMaterialType::FlashcardDeck => "flashcard_deck".to_string(),
             ReviewMaterialType::Test => "test".to_string(),
+            ReviewMaterialType::Assessment => "assessment".to_string(),
         }
     }
 }

@@ -603,6 +603,21 @@ label {
   width: 100%;
 }
 
+.fdc-mastery-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+  width: 100%;
+}
+
+.fdc-mastery-section h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .fdc-card-item {
   background: var(--surface);
   border: 1px solid var(--border);

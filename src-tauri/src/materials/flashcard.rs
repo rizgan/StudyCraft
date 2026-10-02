@@ -426,10 +426,7 @@ mod tests {
 
     #[test]
     fn test_html_special_chars_escaped() {
-        let cards = vec![make_card(
-            "if (a < b) && c > d",
-            "a & b<br>literal",
-        )];
+        let cards = vec![make_card("if (a < b) && c > d", "a & b<br>literal")];
         let result = export_to_anki(cards, None, "tsv");
         let line: &str = strip_bom(&result).lines().nth(1).unwrap();
         assert!(line.contains("if (a &lt; b) &amp;&amp; c &gt; d"));
@@ -557,10 +554,8 @@ mod tests {
             make_card("Что такое Rust?", "Язык системного программирования"),
         ];
 
-        let output_path = std::env::temp_dir().join(format!(
-            "studycraft_apkg_test_{}.apkg",
-            std::process::id()
-        ));
+        let output_path =
+            std::env::temp_dir().join(format!("studycraft_apkg_test_{}.apkg", std::process::id()));
         let db_path = std::env::temp_dir().join(format!(
             "studycraft_apkg_readback_{}.db",
             std::process::id()
@@ -609,11 +604,7 @@ mod tests {
         assert_eq!(card_count, 2);
 
         let field_data: String = conn
-            .query_row(
-                "SELECT data FROM notes WHERE id = 1",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT data FROM notes WHERE id = 1", [], |row| row.get(0))
             .unwrap();
         assert_eq!(
             field_data,
@@ -647,7 +638,8 @@ mod tests {
         let _ = std::fs::remove_file(&db_path);
 
         // Empty deck must be rejected.
-        let empty_path = std::env::temp_dir().join(format!("studycraft_apkg_empty_{}.apkg", std::process::id()));
+        let empty_path =
+            std::env::temp_dir().join(format!("studycraft_apkg_empty_{}.apkg", std::process::id()));
         assert!(export_apkg(&[], "Empty", &empty_path).is_err());
     }
 }

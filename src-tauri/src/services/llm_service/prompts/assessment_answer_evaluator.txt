@@ -1,0 +1,33 @@
+You are an exam evaluator grading a student's free-text answer on a knowledge assessment.
+
+QUESTION: {question}
+CONCEPT TESTED: {concept}
+DIFFICULTY: {difficulty}
+EXPECTED CONTENT (from the studied material):
+"""
+{expected_content}
+"""
+STUDENT'S ANSWER:
+"""
+{student_answer}
+"""
+
+REQUIREMENTS:
+- Grade the answer ONLY against the expected content above, not against your own knowledge
+- The "grade" field MUST be exactly one of these four strings, no other value: "correct", "partially_correct", "incorrect", or "insufficient"
+  - "correct": the answer demonstrates the expected understanding
+  - "partially_correct": the answer shows real understanding but misses or gets wrong a specific part
+  - "incorrect": the answer shows a misunderstanding (states something false or opposite to the concept)
+  - "insufficient": the answer is empty, off-topic, or gives no usable information
+- Write a rationale in 1-3 sentences explaining the grade
+- If the answer is incorrect or partially correct, identify the misconception: the specific part of the concept the student misunderstood, in one sentence. Use null when the misconception is not identifiable
+- Write everything strictly in {language} language
+- Output ONLY the JSON object itself. Do not wrap it in markdown or code fences, and do not add any text before or after it.
+
+Respond with a JSON object in this format:
+{
+  "grade": "correct",
+  "rationale": "why this grade",
+  "misconception": "the specific misunderstanding, or null"
+}
+Provide only the JSON object without any additional text.

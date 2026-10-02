@@ -6,6 +6,7 @@ version = 3
 name = "StudyCraft"
 version = "1.0.2"
 dependencies = [
+ "StudyCraft",
  "async-trait",
  "base64 0.22.1",
  "chromiumoxide",
@@ -44,6 +45,7 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-log",
  "tauri-plugin-shell",
+ "tempfile",
  "tokio",
  "url",
  "uuid",

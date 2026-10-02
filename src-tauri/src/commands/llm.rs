@@ -1,8 +1,10 @@
 use crate::services::llm_service;
 use crate::services::llm_service::manager::{
     ConceptExtraction, FlashcardGenerationRequest, GeneratedCard, GeneratedTestQuestion,
-    SearchAgentResponse, TestGenerationRequest,
+    LanguageFlashcard, LanguageFlashcardGenerationRequest, SearchAgentResponse,
+    TestGenerationRequest,
 };
+use crate::services::tts_service::TtsAudio;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -13,6 +15,21 @@ pub struct ProviderInfo {
     pub model: String,
     pub enabled: bool,
     pub instance_id: usize,
+}
+
+/// Generate language-learning flashcards (language-learning mode only).
+/// The general `generate_flashcards` command is unchanged.
+#[tauri::command]
+pub async fn generate_language_flashcards(
+    state: State<'_, AppState>,
+    request: LanguageFlashcardGenerationRequest,
+) -> Result<Vec<LanguageFlashcard>, String> {
+    let llm_service = state.llm.lock().await;
+
+    llm_service
+        .generate_language_flashcards_from_materials(&state, request)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -67,4 +84,14 @@ pub async fn search_in_study_materials(
         .search_study_materials(&state, query)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Synthesize the pronunciation of `text` through the configured TTS
+/// provider (language-learning pronunciation hook). Returns audio bytes.
+#[tauri::command]
+pub async fn synthesize_pronunciation(text: String) -> Result<TtsAudio, String> {
+    let service =
+        crate::services::tts_service::TtsService::from_config().map_err(|e| e.to_string())?;
+
+    service.synthesize(&text).await.map_err(|e| e.to_string())
 }

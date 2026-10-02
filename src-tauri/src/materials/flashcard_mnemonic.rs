@@ -67,8 +67,7 @@ pub fn parse_mnemonic_response(raw: &str) -> Result<MnemonicGeneratorResponse, S
         .map_err(|e| format!("Failed to parse mnemonic JSON: {}", e))?;
 
     if parsed.is_suitable && parsed.mnemonic.trim().is_empty() {
-        return Err("Mnemonic response marked suitable but contains no mnemonic text"
-            .to_string());
+        return Err("Mnemonic response marked suitable but contains no mnemonic text".to_string());
     }
     Ok(parsed)
 }

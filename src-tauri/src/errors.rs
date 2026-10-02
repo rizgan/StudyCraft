@@ -23,6 +23,8 @@ pub enum AppError {
     GitError(String),
     MarkdownRendererError(String),
     ChromiumError(String),
+    TtsNotConfigured,
+    TtsProviderError(String),
 }
 
 /// Displays for AppError
@@ -46,6 +48,8 @@ impl fmt::Display for AppError {
             AppError::GitError(msg) => write!(f, "Git Error: {}", msg),
             AppError::MarkdownRendererError(msg) => write!(f, "Markdown Renderer Error: {}", msg),
             AppError::ChromiumError(msg) => write!(f, "Chromium error: {}", msg),
+            AppError::TtsNotConfigured => write!(f, "TTS provider is not configured"),
+            AppError::TtsProviderError(msg) => write!(f, "TTS provider error: {}", msg),
         }
     }
 }

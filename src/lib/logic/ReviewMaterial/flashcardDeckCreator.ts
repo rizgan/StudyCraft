@@ -23,6 +23,13 @@ export interface FlashcardDeck {
 export interface Card {
   front: string;
   back: string;
+  /**
+   * Optional generated language metadata for this card. One card carries
+   * its own metadata, so adding/removing/editing cards can never shift
+   * metadata onto a different card. Absent (null) for cards without
+   * language data.
+   */
+  language?: LanguageFlashcard | null;
 }
 
 export interface DeckFormData {
@@ -31,11 +38,45 @@ export interface DeckFormData {
   tags: string[];
   selectedMaterials: StudyMaterial[];
   concept: string;
+  is_language_learning?: boolean;
+  learning_language?: string;
+  base_language?: string;
+  card_direction?: 'recognition' | 'production' | 'both';
 }
 
 export interface GeneratedCard {
   question: string;
   answer: string;
+}
+
+export interface LanguageLearningSettings {
+  learning_language: string;
+  base_language: string;
+}
+
+export interface LanguageVocabulary {
+  target_expression: string;
+  meaning: string;
+  pronunciation?: string | null;
+  example?: string | null;
+  example_translation?: string | null;
+  context?: string | null;
+  grammatical_information?: string | null;
+}
+
+export interface LanguageFlashcard {
+  question: string;
+  answer: string;
+  vocabulary?: LanguageVocabulary | null;
+  direction?: 'recognition' | 'production' | null;
+  task?: 'translation' | 'understanding_in_context' | null;
+}
+
+export interface FlashcardLanguage {
+  card_id: number;
+  direction: 'recognition' | 'production';
+  task: 'translation' | 'understanding_in_context';
+  item: LanguageVocabulary;
 }
 
 export interface FlashcardDeckCreationResponse {
@@ -100,11 +141,11 @@ export class FlashcardDeckCreatorLogic {
   }
 
   addCard(): void {
-    this.cards = [...this.cards, { front: '', back: '' }];
+    this.cards = [...this.cards, { front: '', back: '', language: null }];
   }
 
   addCardWithContent(front: string, back: string): void {
-    this.cards = [...this.cards, { front, back }];
+    this.cards = [...this.cards, { front, back, language: null }];
   }
 
   removeCard(index: number): void {
@@ -145,6 +186,19 @@ export class FlashcardDeckCreatorLogic {
     return materials.reduce((sum, material) => sum + (material.cardsToGenerate || 5), 0);
   }
 
+  private buildLanguageRequest(
+    formData: DeckFormData,
+    materialsRequest: { material_id: string; cards_to_generate: number }[],
+  ) {
+    return {
+      materials: materialsRequest,
+      concept: formData.concept || null,
+      learning_language: formData.learning_language || '',
+      base_language: formData.base_language || '',
+      direction: formData.card_direction || 'both',
+    };
+  }
+
   async generateFlashcards(formData: DeckFormData): Promise<void> {
     if (formData.selectedMaterials.length === 0) {
       this.currentStep++;
@@ -176,27 +230,46 @@ export class FlashcardDeckCreatorLogic {
       }
 
       console.log('Sending generation request:', materialsRequest);
-      this.generationStatus = formData.concept 
+      this.generationStatus = formData.concept
         ? `Generating flashcards focused on "${formData.concept}"...`
         : 'Sending request to AI model...';
-      
-      const generatedCards = await invoke('generate_flashcards', {
-        request: {
-          materials: materialsRequest,
-          language: formData.language || 'English',
-          concept: formData.concept || null 
-        }
-      }) as GeneratedCard[];
+
+      const isLanguageLearning =
+        formData.is_language_learning === true &&
+        !!formData.learning_language &&
+        !!formData.base_language;
+
+      let generatedCards: GeneratedCard[];
+      const generatedLanguageCards: LanguageFlashcard[] = [];
+      if (isLanguageLearning) {
+        const languageCards = await invoke('generate_language_flashcards', {
+          request: this.buildLanguageRequest(formData, materialsRequest),
+        }) as LanguageFlashcard[];
+        generatedLanguageCards.push(...languageCards);
+        generatedCards = languageCards.map((card) => ({
+          question: card.question,
+          answer: card.answer,
+        }));
+      } else {
+        generatedCards = await invoke('generate_flashcards', {
+          request: {
+            materials: materialsRequest,
+            language: formData.language || 'English',
+            concept: formData.concept || null
+          }
+        }) as GeneratedCard[];
+      }
 
       console.log('Generated cards:', generatedCards);
       this.generationStatus = `Successfully generated ${generatedCards.length} flashcards`;
-      
+
       if (generatedCards && Array.isArray(generatedCards) && generatedCards.length > 0) {
-        this.cards = generatedCards.map((card: GeneratedCard) => ({
+        this.cards = generatedCards.map((card: GeneratedCard, index: number) => ({
           front: card.question,
-          back: card.answer
+          back: card.answer,
+          language: generatedLanguageCards[index] ?? null
         }));
-        
+
         setTimeout(() => {
           this.currentStep = 2;
           this.isGenerating = false;
@@ -232,12 +305,51 @@ export class FlashcardDeckCreatorLogic {
         id: null
       }));
       
+      const isLanguageLearning =
+        formData.is_language_learning === true &&
+        !!formData.learning_language &&
+        !!formData.base_language;
+
+      const languageLearning = isLanguageLearning
+        ? {
+            learning_language: formData.learning_language!,
+            base_language: formData.base_language!,
+          }
+        : null;
+
+      // Per-card language metadata: each card carries its own generated
+      // metadata, so manually added cards are null and edited cards keep
+      // theirs.
+      const cardLanguage = this.cards.map((card) => {
+        const generated = card.language ?? null;
+        if (!generated || !generated.vocabulary) {
+          return null;
+        }
+        const item: LanguageVocabulary = {
+          target_expression: generated.vocabulary.target_expression,
+          meaning: generated.vocabulary.meaning,
+          pronunciation: generated.vocabulary.pronunciation ?? null,
+          example: generated.vocabulary.example ?? null,
+          example_translation: generated.vocabulary.example_translation ?? null,
+          context: generated.vocabulary.context ?? null,
+          grammatical_information:
+            generated.vocabulary.grammatical_information ?? null,
+        };
+        return {
+          card_id: 0, // assigned by the database on insert
+          direction: generated.direction ?? 'recognition',
+          task: generated.task ?? 'translation',
+          item,
+        } satisfies FlashcardLanguage;
+      });
+
       const result = await invoke('create_flashcard_deck', {
         id: deckId,
         name: formData.name,
         tags: formData.tags,
         cards: cardData,
-        language: formData.language
+        language_learning: languageLearning,
+        card_language: cardLanguage
       }) as FlashcardDeckCreationResponse;
 
       console.log('Created flashcard deck:', result);

@@ -139,6 +139,7 @@ impl TestOperations for DbService {
             last_review: None,
             created_at: now,
             updated_at: now,
+            language_learning: None,
         };
 
         self.add_review_material_tx(&tx, &review_material)?;
